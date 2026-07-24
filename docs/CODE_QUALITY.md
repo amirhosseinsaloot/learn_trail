@@ -127,6 +127,8 @@ Either/or choices, recorded so no session re-litigates them:
 | LLM call replay | **respx** | pytest-recording (VCR) | All model traffic is httpx under the hood (OpenAI-compatible client → LiteLLM proxy). respx intercepts at the httpx transport layer with first-class async + streaming support, which SSE tests need. VCR cassettes additionally record real request headers — an `Authorization: Bearer sk-…` sitting in a committed cassette is exactly the leak gitleaks exists to prevent; hand-built respx fixtures never contain secrets |
 | Test database | **testcontainers (real Postgres)** | SQLite stand-in | pgvector arrives in Phase 8, and JSONB/full-text behavior differs today; SQLite green ≠ Postgres green |
 | Coverage gate | **diff-cover (changed lines)** | total-% threshold | Total % rewards padding old code with trivial tests; changed-line coverage gates what each commit actually touched |
+| Next.js lint rules | **`@next/eslint-plugin-next`** — the one sanctioned non-type-aware ESLint exception | full `eslint-config-next`; dropping Next rules entirely | Next's rules are domain rules (`no-img-element`, `no-html-link-for-pages`), not style, so they do not overlap Biome. The full `eslint-config-next` preset drags in the style/import rules Biome owns; the bare plugin does not |
+| Frontend validation | **Zod for purely-local form state only** | Zod for API request/response shapes | API shapes come from `openapi-typescript` (Pydantic is the single source of truth, invariant #4). Hand-written Zod for the same shapes is a second source of truth that silently drifts |
 
 Rejected outright (do not add):
 
@@ -297,9 +299,11 @@ retrieval in 8) — add the layer in the same task that creates the subpackage.
    the plan has been aligned to mypy. The spec text itself is untouched.
 2. **§6 suggests Zod for frontend validation** vs. Tier 2's openapi-typescript
    making Pydantic the single source of truth. Hand-written Zod schemas for API
-   shapes would be a *second* source of truth that drifts. Proposed resolution
-   (needs your call): Zod only for purely-local form state, never for API
-   request/response shapes — those come from the generated types.
+   shapes would be a *second* source of truth that drifts. **RESOLVED 2026-07-25:**
+   Zod only for purely-local form state, never for API request/response shapes —
+   those come from the generated types. Recorded in "Decisions and rejections".
+   No Zod dependency in Phase 0; it may be added when the first local-only form
+   appears. The spec text itself is untouched.
 3. **§19 "Start with this exact subset"** lists DeepEval/Phoenix/LangGraph, which
    §15 phases in at 6/5/2. Same end-state-vs-Phase-0 ambiguity already resolved
    for docker-compose (services join compose in the phase that introduces their
@@ -308,6 +312,8 @@ retrieval in 8) — add the layer in the same task that creates the subpackage.
    exists as *design* from Phase 0 but gets its first real job in Phase 6.
 4. **"typescript-eslint type-aware rules only"** drops `eslint-config-next`
    (Next.js's own rules: `@next/next/no-img-element`, react-hooks deps, etc.),
-   which Biome does not fully replace. Options: (a) accept the loss, (b) allow
-   `@next/eslint-plugin-next` as the one non-type-aware exception. Needs your
-   call; (b) recommended — it's domain rules, not style, so no Biome overlap.
+   which Biome does not fully replace. **RESOLVED 2026-07-25:** option (b) —
+   `@next/eslint-plugin-next` is allowed as the single documented non-type-aware
+   exception, because its rules are Next.js domain rules rather than style and so
+   cannot contradict Biome. The full `eslint-config-next` preset stays rejected.
+   Recorded in "Decisions and rejections".
