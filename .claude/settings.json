@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p /home/amir/learn_trail/.claude/agents && ls -la /home/amir/learn_trail/.claude)"
+    ],
+    "additionalDirectories": [
+      "/home/amir/learn_trail/.claude"
+    ]
+  }
+}
