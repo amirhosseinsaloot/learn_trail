@@ -1,0 +1,30 @@
+[project]
+name = "learntrail"
+version = "0.1.0"
+description = "Single-user AI learning workspace: persistent Q&A distilled into human-approved Learnings."
+readme = "README.md"
+requires-python = ">=3.12"
+# No runtime dependencies at the root yet. Application dependencies
+# (FastAPI, SQLAlchemy, Alembic, ...) arrive with apps/api and
+# packages/database in later Phase 0 tasks.
+dependencies = []
+
+# Root is an environment/tooling project, not an installable distribution:
+# no build backend, nothing to build. Application code lives in apps/ and
+# packages/, which get their own pyproject.toml as they land.
+[tool.uv]
+package = false
+
+# Tier 1 Python tooling only (docs/CODE_QUALITY.md). Everything else
+# (anyio, respx, testcontainers, pytest-cov, import-linter, ...) is Tier 2
+# and lands in Phase 1, per CLAUDE.md invariant #6.
+[dependency-groups]
+dev = [
+    "mypy>=2.3",
+    "pytest>=9.1",
+    "ruff>=0.16",
+]
+
+# Ruff and mypy are deliberately unconfigured here: their rule sets
+# (Ruff E,F,I,B,UP,S,SIM,C4,PTH,ASYNC,RUF; mypy strict + Pydantic plugin)
+# land with the apps/api skeleton they check.
