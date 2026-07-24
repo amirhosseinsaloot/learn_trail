@@ -2,9 +2,8 @@
 
 Current phase: **Phase 0 — Development environment** (see [plans/phase-0.md](../plans/phase-0.md))
 
-Last completed task: None. Repo scaffolding (spec, invariants, subagents, phase tests,
-plans, ADRs, session-continuity tooling) was just created; no Phase 0 build task is
-checked off yet.
+Last completed task: Phase 0 task 1 — monorepo layout scaffolded per SPEC §16
+(commit `1de4a59`). Directories only, `.gitkeep`-tracked.
 
 Plan audit (2026-07-24): before starting the build, the Phase 0 plan was amended —
 Phase 0's compose/exit criterion narrowed to Postgres + backend + frontend (services
@@ -18,11 +17,16 @@ defines the phased code-quality toolchain (tiers, either/or decisions, FAST/SLOW
 lanes, import-linter contracts, per-phase checklist); docs/ROADMAP_TOOLING.md maps
 tools onto the §15 phases without editing the spec. plans/phase-0.md now carries the
 Phase 0 tooling tasks (uv, Ruff, mypy-only, Biome, typescript-eslint, tsc strict,
-lefthook). Two open calls for the user are flagged at the bottom of CODE_QUALITY.md
-(Zod scope; Next.js ESLint plugin exception).
+lefthook).
 
-Next task: Scaffold the monorepo layout (`apps/web/`, `apps/api/`, `packages/`,
-`infra/`) per `plans/phase-0.md`'s task list — owner `infra-devops`.
+Both CODE_QUALITY.md open calls are now resolved (2026-07-25, commit `181a0e6`):
+`@next/eslint-plugin-next` is allowed as the single non-type-aware ESLint exception,
+and Zod is scoped to purely-local form state only (never API shapes — those come from
+openapi-typescript in Phase 1). Neither adds a Phase 0 dependency beyond the ESLint
+plugin.
+
+Next task: Root Python env managed by uv with a committed `uv.lock`; dev tooling
+(pytest, Ruff, mypy) installable via one documented command — owner `infra-devops`.
 
 ## In-flight / half-done
 
@@ -45,7 +49,10 @@ yet.
   placeholders.
 - `plans/phase-0.md` … `phase-12.md` — task breakdown per phase.
 - `docs/decisions/` — ADR template + 0001 (why exit criteria are executable).
-- No application code: no `apps/`, no `packages/`, no `docker-compose.yml`.
+- The SPEC §16 directory tree (`apps/`, `packages/`, `tests/`, `prompts/`, `infra/`),
+  every leaf holding only a `.gitkeep`. `packages/ai_core/prompts/` is deliberately
+  absent — top-level `prompts/` is canonical.
+- Still no application code, no package manifests, no `docker-compose.yml`.
 
 ---
 

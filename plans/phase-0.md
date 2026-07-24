@@ -30,12 +30,12 @@ If Docker is down it fails with an explicit "docker not running — run
 Ordering note: docker-compose.yml is written **last** — its backend/frontend services
 reference Dockerfiles that only exist after the app skeletons land.
 
-- [ ] Scaffold the monorepo layout from docs/SPEC.md §16 (apps/, packages/, tests/,
+- [x] Scaffold the monorepo layout from docs/SPEC.md §16 (apps/, packages/, tests/,
       prompts/, infra/), with `.gitkeep` in each empty directory so git tracks it.
       Do not create `packages/ai_core/prompts/` — top-level `prompts/` is the single
       canonical prompts directory (prompt text is lifecycle-managed content owned by
       `prompt-librarian`, loaded as files, never imported as Python source)
-      (owner: `infra-devops`) — commit: `____`
+      (owner: `infra-devops`) — commit: `1de4a59`
 - [ ] Root Python env managed by uv with a committed `uv.lock`; dev tooling (pytest,
       Ruff, mypy) installable via one documented command; `make status` uses
       `.venv/bin/python` when present (owner: `infra-devops`) — commit: `____`
