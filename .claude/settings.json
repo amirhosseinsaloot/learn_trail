@@ -30,7 +30,19 @@
       "Bash(git reflog *)",
       "Bash(git gc *)",
       "Bash(echo \"claude-mentions-in-messages: $?\")",
-      "Bash(grep -n \"^#\\\\{1,3\\\\} \" docs/SPEC.md)"
+      "Bash(grep -n \"^#\\\\{1,3\\\\} \" docs/SPEC.md)",
+      "Bash(curl -LsSf https://astral.sh/uv/install.sh)",
+      "Bash(sh)",
+      "Bash(make -p)",
+      "Bash(make -f /dev/stdin)",
+      "Bash(.venv/bin/python -m pytest -q tests/phases/test_phase_0.py)",
+      "Bash(git check-ignore *)",
+      "Bash(.venv/bin/python --version)",
+      "Bash(.venv/bin/ruff --version)",
+      "Bash(.venv/bin/mypy --version)",
+      "Bash(.venv/bin/pytest --version)",
+      "Bash(make -pn status)",
+      "Bash(~/.local/bin/uv sync *)"
     ],
     "additionalDirectories": [
       "/home/amir/learn_trail/.claude",
