@@ -36,9 +36,9 @@ reference Dockerfiles that only exist after the app skeletons land.
       canonical prompts directory (prompt text is lifecycle-managed content owned by
       `prompt-librarian`, loaded as files, never imported as Python source)
       (owner: `infra-devops`) — commit: `1de4a59`
-- [ ] Root Python env managed by uv with a committed `uv.lock`; dev tooling (pytest,
+- [x] Root Python env managed by uv with a committed `uv.lock`; dev tooling (pytest,
       Ruff, mypy) installable via one documented command; `make status` uses
-      `.venv/bin/python` when present (owner: `infra-devops`) — commit: `____`
+      `.venv/bin/python` when present (owner: `infra-devops`) — commit: `1a603eb`
 - [ ] Scaffold apps/api/ FastAPI app skeleton (no routes yet) with Ruff
       (lint + format, rule sets per docs/CODE_QUALITY.md) and mypy strict +
       Pydantic plugin — mypy only, no Pyright (docs/CODE_QUALITY.md
@@ -60,6 +60,18 @@ reference Dockerfiles that only exist after the app skeletons land.
       (owner: `infra-devops`) — commit: `____`
 - [ ] Replace the placeholder tests/phases/test_phase_0.py with the executable exit
       criterion described above (owner: `backend-api`) — commit: `____`
+
+## Watch items surfaced during the build
+
+- **mypy 2.x + Pydantic plugin.** The lock resolved mypy 2.3.0, a major past what
+  docs/CODE_QUALITY.md was written against, and mypy has no stable plugin API. The
+  task that adds `[tool.mypy]` must actually *run* `mypy --strict` over a trivial
+  `BaseModel` and confirm no plugin-load error, rather than assume compatibility.
+  If it breaks, pin mypy back (`>=1.15,<2`) and re-lock — do not drop the Pydantic
+  plugin (it is why mypy was chosen over Pyright) and do not add a second checker.
+- **pytest 9 import mode.** When pytest discovery is extended to `apps/api/` and
+  `packages/database/`, same-named test modules in directories without `__init__.py`
+  collide under the default import mode. Resolve in the single root config.
 
 ## Not in this phase
 

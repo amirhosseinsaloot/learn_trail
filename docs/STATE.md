@@ -2,8 +2,8 @@
 
 Current phase: **Phase 0 — Development environment** (see [plans/phase-0.md](../plans/phase-0.md))
 
-Last completed task: Phase 0 task 1 — monorepo layout scaffolded per SPEC §16
-(commit `1de4a59`). Directories only, `.gitkeep`-tracked.
+Last completed task: Phase 0 task 2 — uv-managed root Python env with a committed
+`uv.lock` (commit `1a603eb`). Task 1 (SPEC §16 layout) was `1de4a59`.
 
 Plan audit (2026-07-24): before starting the build, the Phase 0 plan was amended —
 Phase 0's compose/exit criterion narrowed to Postgres + backend + frontend (services
@@ -25,8 +25,10 @@ and Zod is scoped to purely-local form state only (never API shapes — those co
 openapi-typescript in Phase 1). Neither adds a Phase 0 dependency beyond the ESLint
 plugin.
 
-Next task: Root Python env managed by uv with a committed `uv.lock`; dev tooling
-(pytest, Ruff, mypy) installable via one documented command — owner `infra-devops`.
+Next task: Scaffold `apps/api/` FastAPI skeleton (no routes yet) with Ruff rule sets
+and mypy strict + Pydantic plugin — owner `backend-api`. Two watch items recorded at
+the bottom of plans/phase-0.md apply to it (mypy 2.x plugin compatibility must be
+verified by running it, not assumed; pytest 9 import-mode collisions).
 
 ## In-flight / half-done
 
@@ -52,7 +54,11 @@ yet.
 - The SPEC §16 directory tree (`apps/`, `packages/`, `tests/`, `prompts/`, `infra/`),
   every leaf holding only a `.gitkeep`. `packages/ai_core/prompts/` is deliberately
   absent — top-level `prompts/` is canonical.
-- Still no application code, no package manifests, no `docker-compose.yml`.
+- Root `pyproject.toml` + committed `uv.lock` + `.python-version` (3.12) + `README.md`.
+  `uv sync --all-groups` builds `.venv/` with pytest 9.1.1, ruff 0.16.0, mypy 2.3.0.
+  Ruff and mypy are installed but deliberately **unconfigured** — their settings land
+  with the code they check.
+- Still no application code, no per-app manifests, no `docker-compose.yml`.
 
 ---
 
