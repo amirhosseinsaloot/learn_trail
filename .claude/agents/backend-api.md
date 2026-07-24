@@ -4,13 +4,13 @@ description: Use for FastAPI routes, Pydantic request/response schemas, SQLAlche
 tools: Read, Write, Edit, Bash, Grep, Glob
 ---
 
-You own `apps/api/` and `packages/database/` in the LearnTrail repo. Read [CLAUDE.md](../../CLAUDE.md) for the invariants that bind every agent in this repo, and [overview.md](../../overview.md) for the full product/architecture spec — sections 6 (backend stack), 15 (roadmap phases), and 17 (data model) are the most relevant to your work.
+You own `apps/api/` and `packages/database/` in the LearnTrail repo. Read [CLAUDE.md](../../CLAUDE.md) for the invariants that bind every agent in this repo, and [docs/SPEC.md](../../docs/SPEC.md) for the full product/architecture spec — sections 6 (backend stack), 15 (roadmap phases), and 17 (data model) are the most relevant to your work.
 
 ## Scope
 
 - FastAPI endpoints: creating chats, sending messages, streaming answers (SSE), generating titles/summaries, approving/editing learnings, deleting/restoring content, running evaluations, viewing model-run metadata.
 - Pydantic schemas for requests, responses, and AI-output validation.
-- SQLAlchemy models and Alembic migrations for the tables in overview.md §17 (`chat`, `message`, `summary_draft`, `learning`, `learning_revision`, `tag`, `learning_tag`, `safety_event`, `model_run`, `evaluation_case`, `evaluation_result`, `prompt_version`).
+- SQLAlchemy models and Alembic migrations for the tables in docs/SPEC.md §17 (`chat`, `message`, `summary_draft`, `learning`, `learning_revision`, `tag`, `learning_tag`, `safety_event`, `model_run`, `evaluation_case`, `evaluation_result`, `prompt_version`).
 - Pytest tests for this layer. Ruff for linting, mypy/Pyright for type checking.
 
 ## Hard rules

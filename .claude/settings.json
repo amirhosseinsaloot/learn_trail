@@ -1,10 +1,40 @@
 {
   "permissions": {
     "allow": [
-      "Bash(mkdir -p /home/amir/learn_trail/.claude/agents && ls -la /home/amir/learn_trail/.claude)"
+      "Bash(mkdir -p /home/amir/learn_trail/.claude/agents && ls -la /home/amir/learn_trail/.claude)",
+      "Bash(git -C /home/amir/learn_trail mv overview.md docs/SPEC.md)",
+      "Bash(git -C /home/amir/learn_trail status --short)",
+      "Bash(sed -i 's#\\\\.\\\\./\\\\.\\\\./overview\\\\.md#../../docs/SPEC.md#g; s#overview\\\\.md#docs/SPEC.md#g' .claude/agents/*.md && grep -rn \"SPEC.md\\\\|overview.md\" .claude/agents/*.md)",
+      "Bash(python3 /tmp/claude-1000/-home-amir-learn-trail/45282ffb-2299-49ec-a4f8-1619c9e9c297/scratchpad/gen_phase_tests.py)",
+      "Bash(python3 -m pytest --version)",
+      "Bash(python3 -m pip --version)",
+      "Bash(pip3 install *)",
+      "Bash(python3 -m pytest tests/phases -q)",
+      "Bash(make status *)",
+      "Bash(python3 /tmp/claude-1000/-home-amir-learn-trail/45282ffb-2299-49ec-a4f8-1619c9e9c297/scratchpad/gen_plans.py)",
+      "WebFetch(domain:docs.claude.com)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(mkdir -p /home/amir/learn_trail/.claude/hooks)",
+      "Bash(CLAUDE_PROJECT_DIR=/home/amir/learn_trail python3 .claude/hooks/pre_compact_snapshot.py)",
+      "Bash(rm -rf /home/amir/learn_trail/.claude/transcript-snapshots /tmp/fake_transcript.jsonl)",
+      "Bash(python3 -m json.tool /home/amir/learn_trail/.claude/settings.json)",
+      "Bash(mkdir -p /home/amir/learn_trail/.claude/commands)",
+      "Bash(python3 -m pytest tests/phases/test_phase_0.py -q)",
+      "Bash(git rm *)",
+      "Bash(git reset *)",
+      "Bash(git add *)",
+      "Bash(git commit -q -m 'Init development environment and planning *)",
+      "Bash(git commit *)",
+      "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch -f --msg-filter 'sed -e \"s/CLAUDE\\\\.md invariants/project invariants/\" -e \"s/ \\\\.claude\\\\/agents\\\\/\\\\*\\\\.md subagent/ subagent/\"' -- --all)",
+      "Bash(git update-ref *)",
+      "Bash(git reflog *)",
+      "Bash(git gc *)",
+      "Bash(echo \"claude-mentions-in-messages: $?\")"
     ],
     "additionalDirectories": [
-      "/home/amir/learn_trail/.claude"
+      "/home/amir/learn_trail/.claude",
+      "/home/amir/learn_trail/.claude/agents",
+      "/home/amir/learn_trail/.claude/transcript-snapshots"
     ]
   }
 }

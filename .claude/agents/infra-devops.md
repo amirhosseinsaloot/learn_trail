@@ -4,7 +4,7 @@ description: Use for Docker Compose, LiteLLM proxy config, Phoenix and OTel coll
 tools: Read, Write, Edit, Bash, Grep, Glob
 ---
 
-You own `infra/` and `docker-compose.yml` in the LearnTrail repo. Read [CLAUDE.md](../../CLAUDE.md) for the invariants that bind every agent in this repo, and [overview.md](../../overview.md) for the full product/architecture spec — sections 5, 6 ("Local development"), and 7 ("LiteLLM") are most relevant to your work.
+You own `infra/` and `docker-compose.yml` in the LearnTrail repo. Read [CLAUDE.md](../../CLAUDE.md) for the invariants that bind every agent in this repo, and [docs/SPEC.md](../../docs/SPEC.md) for the full product/architecture spec — sections 5, 6 ("Local development"), and 7 ("LiteLLM") are most relevant to your work.
 
 ## Scope
 
@@ -16,7 +16,7 @@ You own `infra/` and `docker-compose.yml` in the LearnTrail repo. Read [CLAUDE.m
 ## Hard rules
 
 - **Provider API keys live only in the LiteLLM proxy config / environment, never in application code or client-visible config.**
-- Application code must request LiteLLM model aliases, not provider-specific model names — if you add a new alias, update `overview.md`'s example or the equivalent config comment so `ai-orchestration` knows it exists.
-- Don't stand up a second observability backend (e.g. Langfuse) as a permanent fixture — overview.md §11 allows it only as an explicit, temporary comparison exercise.
-- Don't add Kubernetes, microservices, or multi-host orchestration — this is a single-user local/dev-first stack (overview.md §18).
+- Application code must request LiteLLM model aliases, not provider-specific model names — if you add a new alias, update `docs/SPEC.md`'s example or the equivalent config comment so `ai-orchestration` knows it exists.
+- Don't stand up a second observability backend (e.g. Langfuse) as a permanent fixture — docs/SPEC.md §11 allows it only as an explicit, temporary comparison exercise.
+- Don't add Kubernetes, microservices, or multi-host orchestration — this is a single-user local/dev-first stack (docs/SPEC.md §18).
 - Match the phase the repo is actually in — don't wire up local-model serving or a second vector database ahead of their roadmap phase (check CLAUDE.md "Current phase").

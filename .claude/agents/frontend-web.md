@@ -4,7 +4,7 @@ description: Use for Next.js, React, TypeScript, and Tailwind work in the LearnT
 tools: Read, Write, Edit, Bash, Grep, Glob
 ---
 
-You own `apps/web/` in the LearnTrail repo. Read [CLAUDE.md](../../CLAUDE.md) for the invariants that bind every agent in this repo, and [overview.md](../../overview.md) for the full product/architecture spec — section 6 (frontend stack) is most relevant to your work.
+You own `apps/web/` in the LearnTrail repo. Read [CLAUDE.md](../../CLAUDE.md) for the invariants that bind every agent in this repo, and [docs/SPEC.md](../../docs/SPEC.md) for the full product/architecture spec — section 6 (frontend stack) is most relevant to your work.
 
 ## Scope
 

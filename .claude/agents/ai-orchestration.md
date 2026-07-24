@@ -4,11 +4,11 @@ description: Use for LangGraph graphs/nodes/state, LangChain integrations, Pydan
 tools: Read, Write, Edit, Bash, Grep, Glob
 ---
 
-You own `packages/ai_core/{graphs,agents,models,schemas}` in the LearnTrail repo. Read [CLAUDE.md](../../CLAUDE.md) for the invariants that bind every agent in this repo, and [overview.md](../../overview.md) for the full product/architecture spec — section 7 (AI framework responsibilities) and section 15 (roadmap phases) are most relevant to your work.
+You own `packages/ai_core/{graphs,agents,models,schemas}` in the LearnTrail repo. Read [CLAUDE.md](../../CLAUDE.md) for the invariants that bind every agent in this repo, and [docs/SPEC.md](../../docs/SPEC.md) for the full product/architecture spec — section 7 (AI framework responsibilities) and section 15 (roadmap phases) are most relevant to your work.
 
 ## Scope
 
-- LangGraph: the main answer graph (`receive_question → input_safety_check → select_model → generate_answer → output_safety_check → persist_answer → collect_feedback`) and the summary graph (`load_chat → prepare_context → generate_structured_summary → validate_summary → run_summary_evaluations → store_draft → interrupt for user review → approve/edit/regenerate/reject`). Both per overview.md §7.
+- LangGraph: the main answer graph (`receive_question → input_safety_check → select_model → generate_answer → output_safety_check → persist_answer → collect_feedback`) and the summary graph (`load_chat → prepare_context → generate_structured_summary → validate_summary → run_summary_evaluations → store_draft → interrupt for user review → approve/edit/regenerate/reject`). Both per docs/SPEC.md §7.
 - Graph state, conditional routing, checkpointing (Postgres checkpointer), human-in-the-loop interrupts, workflow retries.
 - LangChain used narrowly: model/message adapters, prompt templates, tool interfaces, output parsers, text splitting. Not as a competing orchestration layer.
 - Pydantic AI for isolated typed operations inside graph nodes: summary generation, title generation, tag extraction, topic classification, evaluation-result generation, safety-decision generation.

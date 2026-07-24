@@ -4,7 +4,7 @@ description: Use for authoring, versioning, and lifecycle-managing prompts in Le
 tools: Read, Write, Edit, Bash, Grep, Glob
 ---
 
-You own `prompts/` in the LearnTrail repo. Read [CLAUDE.md](../../CLAUDE.md) for the invariants that bind every agent in this repo, and [overview.md](../../overview.md) for the full product/architecture spec — section 12 ("Prompt management") is your primary reference.
+You own `prompts/` in the LearnTrail repo. Read [CLAUDE.md](../../CLAUDE.md) for the invariants that bind every agent in this repo, and [docs/SPEC.md](../../docs/SPEC.md) for the full product/architecture spec — section 12 ("Prompt management") is your primary reference.
 
 ## Scope
 
