@@ -39,10 +39,10 @@ reference Dockerfiles that only exist after the app skeletons land.
 - [x] Root Python env managed by uv with a committed `uv.lock`; dev tooling (pytest,
       Ruff, mypy) installable via one documented command; `make status` uses
       `.venv/bin/python` when present (owner: `infra-devops`) — commit: `1a603eb`
-- [ ] Scaffold apps/api/ FastAPI app skeleton (no routes yet) with Ruff
+- [x] Scaffold apps/api/ FastAPI app skeleton (no routes yet) with Ruff
       (lint + format, rule sets per docs/CODE_QUALITY.md) and mypy strict +
       Pydantic plugin — mypy only, no Pyright (docs/CODE_QUALITY.md
-      "Decisions and rejections") (owner: `backend-api`) — commit: `____`
+      "Decisions and rejections") (owner: `backend-api`) — commit: `0c56b7f`
 - [ ] Add Alembic under packages/database/ and wire it to the Postgres service.
       No models/tables yet — Phase 1 adds `chat`/`message`; this task ends at an
       empty, runnable migration env (owner: `backend-api`) — commit: `____`
@@ -63,12 +63,14 @@ reference Dockerfiles that only exist after the app skeletons land.
 
 ## Watch items surfaced during the build
 
-- **mypy 2.x + Pydantic plugin.** The lock resolved mypy 2.3.0, a major past what
-  docs/CODE_QUALITY.md was written against, and mypy has no stable plugin API. The
-  task that adds `[tool.mypy]` must actually *run* `mypy --strict` over a trivial
-  `BaseModel` and confirm no plugin-load error, rather than assume compatibility.
-  If it breaks, pin mypy back (`>=1.15,<2`) and re-lock — do not drop the Pydantic
-  plugin (it is why mypy was chosen over Pyright) and do not add a second checker.
+- **mypy 2.x + Pydantic plugin — RESOLVED in task 3.** The lock resolved mypy 2.3.0,
+  a major past what docs/CODE_QUALITY.md was written against, and mypy has no stable
+  plugin API. Verified by running `mypy --strict` over a trivial `BaseModel` and
+  confirming both `init_typed` (wrong field type → `arg-type`) and `init_forbid_extra`
+  (unknown kwarg → `call-arg`) actually fire. No pin-back needed. There is no config
+  flag that makes a silently-missing plugin fatal, so **repeat this check by hand on
+  the next mypy major**; if it ever breaks, pin mypy back rather than dropping the
+  plugin (it is why mypy was chosen over Pyright) or adding a second checker.
 - **pytest 9 import mode.** When pytest discovery is extended to `apps/api/` and
   `packages/database/`, same-named test modules in directories without `__init__.py`
   collide under the default import mode. Resolve in the single root config.
