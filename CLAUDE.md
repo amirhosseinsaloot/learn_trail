@@ -30,3 +30,12 @@ current phase or progress.
 - [plans/](plans/) — one file per phase: tasks, exit criterion, what's deferred
 - [docs/decisions/](docs/decisions/) — ADRs for non-obvious decisions
 - [tests/phases/](tests/phases/) — executable exit criteria, one per phase
+
+Where a test goes:
+
+- `tests/phases/` — exit criteria, one file per phase. Nothing else.
+- `<member>/tests/` (e.g. `apps/api/tests/`, `packages/database/tests/`) — unit tests
+  scoped to one workspace member, travelling with the package they test.
+- `tests/{integration,ai,safety,end_to_end}/` — suites that span more than one member.
+- `tests/unit/` — cross-package pure-logic tests only. If a test names a single member,
+  it belongs in that member's `tests/` instead.
