@@ -36,6 +36,28 @@ anything Biome already covers) so the two never disagree: Biome owns style and s
 ESLint owns whatever requires the TypeScript type checker. ESLint therefore runs in the
 FAST CI lane and pre-push, not pre-commit.
 
+Implementation notes from Phase 0 task 6, all probed rather than assumed:
+
+- Use typescript-eslint's `strictTypeCheckedOnly`, not `strictTypeChecked`. The `Only`
+  variant omits the non-type-aware rules (`no-unused-vars`, `no-explicit-any`) that
+  would collide with Biome's equivalents.
+- `strictTypeCheckedOnly` still switches on four non-type-aware *core* rules as a side
+  effect (`no-var`, `prefer-const`, `prefer-rest-params`, `prefer-spread`). All four are
+  explicitly `off` in the ESLint config and covered by Biome instead. Verified with
+  `eslint --print-config`: zero core rules end up enabled.
+- Biome's `next` and `types` domains are pinned to `"none"`. Both would re-create the
+  overlap — `next` duplicates `@next/eslint-plugin-next`, and `types` is where Biome's
+  own type-inference rules (`noFloatingPromises`, `noMisusedPromises`) live. An explicit
+  `"none"` survives version bumps; dependency auto-detection would not.
+- **On every Biome version bump**, re-run the overlap probe and re-read `domains` for
+  newly auto-enabled ones. `preset: "recommended"` and the `react`/`tailwind` domains
+  gain rules on minor releases.
+- `tsc --noEmit` is not runnable bare in `apps/web`: the tsconfig includes generated,
+  gitignored files, so the script is `next typegen && tsc --noEmit`.
+- Known accepted limitation: `strictTypeCheckedOnly` drops ~25 non-type-aware
+  typescript-eslint rules on the assumption Biome's recommended set covers them. The
+  four core rules above were audited individually; the full set has not been diffed.
+
 ---
 
 ## Tier 2 — Phases 1–3, as the app takes shape

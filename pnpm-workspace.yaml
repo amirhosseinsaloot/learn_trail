@@ -1,0 +1,16 @@
+# pnpm workspace root. One node_modules store and one lockfile for the whole
+# monorepo, mirroring the single-root convention already used by uv (uv.lock),
+# pytest (root pytest.ini) and Ruff/mypy (root pyproject.toml).
+#
+# Repo-wide tooling (Biome now, lefthook in task 7) installs at this root with
+# `pnpm add -D -w`, exactly as docs/CODE_QUALITY.md's Tier 1 install column
+# specifies. Application dependencies (Next, React, TypeScript, ESLint) stay in
+# apps/web.
+packages:
+  - apps/web
+
+# Install scripts are denied unless listed here. sharp only builds/downloads
+# native binaries for Next's optional image optimisation, which nothing in this
+# app uses yet; Next falls back to the built-in optimiser without it.
+allowBuilds:
+  sharp: false

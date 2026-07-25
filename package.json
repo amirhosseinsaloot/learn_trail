@@ -1,0 +1,24 @@
+{
+  "name": "learntrail",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "lint:biome": "biome check .",
+    "lint:biome:fix": "biome check --write .",
+    "lint:biome:ci": "biome ci .",
+    "lint:eslint": "pnpm --filter web run lint",
+    "lint:web": "pnpm run lint:biome:ci && pnpm run lint:eslint",
+    "type:web": "pnpm --filter web run typecheck",
+    "build:web": "pnpm --filter web run build",
+    "dev:web": "pnpm --filter web run dev"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.5"
+  }
+}

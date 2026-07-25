@@ -1,0 +1,115 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+
+  // Biome is the formatter and the fast, non-type-aware linter for every
+  // JS/TS/JSON/CSS file in the repo (docs/CODE_QUALITY.md, Tier 1). It lives at
+  // the workspace root because it is repo-wide tooling, installed with
+  // `pnpm add -D -w @biomejs/biome`.
+  //
+  // JSONC rather than JSON so the reasoning below travels with the config;
+  // Biome discovers biome.jsonc exactly like biome.json.
+
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    // .gitignore is the single source of truth for build output (.next/,
+    // node_modules/, next-env.d.ts). The excludes below only cover paths that
+    // are tracked by git but are not Biome's to touch.
+    "useIgnoreFile": true
+  },
+
+  "files": {
+    // The repo is polyglot; Python/TOML/lockfiles are simply not Biome inputs.
+    "ignoreUnknown": true,
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/.next",
+      "!.venv",
+      // Agent/editor settings are configuration owned elsewhere, not source.
+      "!.claude",
+      // Phase 1 will generate apps/web/src/lib/api/schema.gen.ts from the
+      // backend's OpenAPI document. Generated files are never hand-formatted:
+      // the stale-types CI check diffs them byte-for-byte.
+      "!**/*.gen.ts"
+    ]
+  },
+
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    // Matches the 100-column Python limit fixed in docs/CODE_QUALITY.md, so
+    // both halves of the monorepo wrap at the same place.
+    "lineWidth": 100
+  },
+
+  "assist": {
+    "actions": {
+      "source": {
+        // Import order is style, therefore Biome's job (ESLint has no
+        // import/order rule enabled — that would be overlap).
+        "organizeImports": "on"
+      }
+    }
+  },
+
+  "linter": {
+    "enabled": true,
+    "rules": {
+      // "preset" replaced the deprecated boolean "recommended" field in 2.5.
+      "preset": "recommended",
+      // The two rules below are outside Biome's recommended set but inside
+      // ESLint's `eslint:recommended`-for-TypeScript layer, which
+      // typescript-eslint switches on as a side effect of its type-checked
+      // configs. Those four core rules (no-var, prefer-const,
+      // prefer-rest-params, prefer-spread) are non-type-aware, so
+      // apps/web/eslint.config.mjs turns them off to keep ESLint purely
+      // type-aware; enabling their Biome equivalents here is what makes that
+      // safe rather than a coverage hole.
+      //
+      // All four compensations were probed against Biome 2.5.5 rather than
+      // assumed (2026-07-25). noVar, useConst and noArguments each fire;
+      // useConst and noArguments come from the recommended preset, so they are
+      // not repeated below. useSpreadOverApply fires on `f.apply(null, args)`
+      // and `obj.m.apply(obj, args)` but NOT on `Math.max.apply(null, args)`,
+      // where the callee's object differs from the thisArg — a narrower reach
+      // than ESLint's prefer-spread. Accepted: it is one micro-style construct,
+      // not worth reopening the split over. Re-run the probe on a Biome bump.
+      "suspicious": {
+        "noVar": "error" // ESLint no-var
+      },
+      "style": {
+        "useSpreadOverApply": "error" // ESLint prefer-spread
+      }
+    },
+    // Domains are set explicitly rather than left to Biome's dependency
+    // auto-detection, because two of them would collide with the tools that own
+    // those checks under the Biome / typescript-eslint split.
+    "domains": {
+      // React/hooks correctness: nothing else in the toolchain covers it.
+      "react": "recommended",
+      // Class-attribute ordering and Tailwind syntax: style, so Biome's.
+      "tailwind": "recommended",
+      // OFF on purpose: Next.js domain rules are owned by
+      // @next/eslint-plugin-next, the single sanctioned non-type-aware ESLint
+      // exception (docs/CODE_QUALITY.md, "Decisions and rejections",
+      // 2026-07-25). Enabling both would double-report the same findings.
+      "next": "none",
+      // OFF on purpose: anything requiring type inference is typescript-eslint's
+      // half of the split. Biome's inference is its own engine, not tsc's, so
+      // enabling this domain would mean two type checkers disagreeing.
+      "types": "none",
+      // No test runner exists in Phase 0 (invariant #6).
+      "test": "none"
+    }
+  },
+
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "all"
+    }
+  }
+}
