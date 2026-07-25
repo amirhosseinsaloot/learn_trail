@@ -1,6 +1,5 @@
 {
   "permissions": {
-    "defaultMode": "acceptEdits",
     "allow": [
       "Bash(npm run *)",
       "Bash(npm test *)",
@@ -94,12 +93,41 @@
       "Bash(echo \"---MYPY EXIT $?---\")",
       "Bash(.venv/bin/python -)",
       "Bash(.venv/bin/python -m pytest tests/phases -q)",
-      "Bash(.venv/bin/python -c ' *)"
-    ],
-    "additionalDirectories": [
-      "/home/amir/learn_trail/.claude",
-      "/home/amir/learn_trail/.claude/agents",
-      "/home/amir/learn_trail/.claude/transcript-snapshots"
+      "Bash(.venv/bin/python -c ' *)",
+      "Bash(~/.local/bin/uv pip *)",
+      "Bash(~/.local/bin/uv --version)",
+      "Bash(~/.local/bin/uv *)",
+      "Bash(.venv/bin/* *)",
+      "Bash(.venv/bin/*)",
+      "Bash(pnpm *)",
+      "Bash(npx *)",
+      "Bash(docker compose *)",
+      "Bash(docker ps *)",
+      "Bash(docker info)",
+      "Bash(lefthook *)",
+      "Bash(./bin/lefthook *)",
+      "Bash(find *)",
+      "Bash(cat *)",
+      "Bash(ls *)",
+      "Bash(grep *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(diff *)",
+      "Bash(printf *)",
+      "Bash(test *)",
+      "Bash(command -v *)",
+      "Bash(git *)",
+      "Bash(git -C /home/amir/learn_trail rm -q --cached packages/database/.gitkeep)",
+      "Bash(.venv/bin/python -c \"import database; print\\(database.__file__\\)\")",
+      "Bash(.venv/bin/alembic -c packages/database/alembic.ini heads)",
+      "Bash(.venv/bin/alembic -c packages/database/alembic.ini current)",
+      "Bash(.venv/bin/alembic -c packages/database/alembic.ini upgrade head --sql)",
+      "Bash(PATH=/home/amir/learn_trail/.venv/bin:__TRACKED_VAR__ .venv/bin/alembic -c packages/database/alembic.ini revision -m 'smoke test delete me')",
+      "Bash(.venv/bin/alembic -c packages/database/alembic.ini revision -m \"smoke test delete me\")",
+      "Bash(echo \"\\(heads: empty output, exit $?  — zero revisions, as intended\\)\")",
+      "Bash(echo \"heads exit=$?\")",
+      "Bash(echo \"heads exit=$? \\(empty output + 0 = zero revisions, correct\\)\")"
     ],
     "deny": [
       "Bash(sudo *)",
@@ -131,6 +159,12 @@
       "Bash(terraform *)",
       "Bash(aws *)",
       "Bash(gcloud *)"
+    ],
+    "defaultMode": "acceptEdits",
+    "additionalDirectories": [
+      "/home/amir/learn_trail/.claude",
+      "/home/amir/learn_trail/.claude/agents",
+      "/home/amir/learn_trail/.claude/transcript-snapshots"
     ]
   }
 }

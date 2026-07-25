@@ -43,9 +43,9 @@ reference Dockerfiles that only exist after the app skeletons land.
       (lint + format, rule sets per docs/CODE_QUALITY.md) and mypy strict +
       Pydantic plugin — mypy only, no Pyright (docs/CODE_QUALITY.md
       "Decisions and rejections") (owner: `backend-api`) — commit: `0c56b7f`
-- [ ] Add Alembic under packages/database/ and wire it to the Postgres service.
+- [x] Add Alembic under packages/database/ and wire it to the Postgres service.
       No models/tables yet — Phase 1 adds `chat`/`message`; this task ends at an
-      empty, runnable migration env (owner: `backend-api`) — commit: `____`
+      empty, runnable migration env (owner: `backend-api`) — commit: `2b0e933`
 - [ ] Extend the root pytest.ini so apps/api/ and packages/database/ tests are
       discovered — single root config, no per-package pytest configs
       (owner: `backend-api`) — commit: `____`
@@ -58,6 +58,22 @@ reference Dockerfiles that only exist after the app skeletons land.
       with one command (owner: `infra-devops`) — commit: `____`
 - [ ] Write docker-compose.yml: Postgres, backend, frontend — each with a healthcheck
       (owner: `infra-devops`) — commit: `____`
+      - Postgres contract, fixed by task 4 (`packages/database/database/config.py`):
+        role `learntrail`, password `learntrail`, database `learntrail`, container
+        port 5432 published on host 5432. Compose must pass the backend
+        `DATABASE_URL=postgresql+psycopg://learntrail:learntrail@postgres:5432/learntrail`
+        — service name, not `localhost`. The `+psycopg` is load-bearing: a bare
+        `postgresql://` URL resolves to psycopg2, which is deliberately not a
+        dependency, and fails at import.
+      - **Packaging trap:** `packages/database`'s wheel ships only the `database/`
+        package, so `alembic.ini` and `migrations/` are *not* in the built
+        distribution. An image built by installing the wheel gets an importable
+        `database` but no migration env, and `alembic upgrade head` fails with
+        "path doesn't exist". Either `COPY packages/database/` in as source, or
+        move migrations under `database/` so they ship with the wheel.
+      - Backend healthcheck target: `apps/api` has no routes by design, so use
+        FastAPI's built-in `/openapi.json`. Do **not** add a health endpoint —
+        routes are Phase 1.
 - [ ] Replace the placeholder tests/phases/test_phase_0.py with the executable exit
       criterion described above (owner: `backend-api`) — commit: `____`
 

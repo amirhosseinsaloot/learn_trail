@@ -2,9 +2,9 @@
 
 Current phase: **Phase 0 — Development environment** (see [plans/phase-0.md](../plans/phase-0.md))
 
-Last completed task: Phase 0 task 3 — `apps/api/` FastAPI skeleton with Ruff and mypy
-strict (commit `0c56b7f`). Task 1 (SPEC §16 layout) `1de4a59`; task 2 (uv env)
-`1a603eb`.
+Last completed task: Phase 0 task 4 — Alembic migration env under `packages/database/`
+(commit `2b0e933`). Earlier: task 1 (SPEC §16 layout) `1de4a59`, task 2 (uv env)
+`1a603eb`, task 3 (FastAPI skeleton + Ruff + mypy) `0c56b7f`.
 
 Plan audit (2026-07-24): before starting the build, the Phase 0 plan was amended —
 Phase 0's compose/exit criterion narrowed to Postgres + backend + frontend (services
@@ -26,10 +26,8 @@ and Zod is scoped to purely-local form state only (never API shapes — those co
 openapi-typescript in Phase 1). Neither adds a Phase 0 dependency beyond the ESLint
 plugin.
 
-Next task: Add Alembic under `packages/database/` and wire it to the Postgres service —
-no models or tables yet, the task ends at an empty runnable migration env — owner
-`backend-api`. `packages/database` also has to join the uv workspace `members` list in
-the root `pyproject.toml`.
+Next task: Extend the root `pytest.ini` so `apps/api/` and `packages/database/` tests are
+discovered — single root config, no per-package pytest configs — owner `backend-api`.
 
 Correction landed 2026-07-25 (commit `7594deb`): `tests/phases/test_phase_5.py` and
 `plans/phase-5.md` both wrongly claimed the spec defines no Phase 5 exit criterion and
@@ -69,8 +67,17 @@ yet.
 - `apps/api/` — `learntrail-api`, a hatchling distribution exposing top-level `api`.
   `api.main:app` is a FastAPI app object with **no routes**; only FastAPI's built-in
   `/openapi.json`, `/docs`, `/redoc` exist. Runtime deps: fastapi, pydantic, uvicorn.
+- `packages/database/` — `learntrail-database`, exposing top-level `database`. Empty
+  `Base` (zero tables) with a constraint naming convention, `database_url()` reading
+  `DATABASE_URL`, and a runnable Alembic env at `packages/database/alembic.ini` with
+  **zero revisions**. Driver: psycopg 3. Deps: alembic, psycopg[binary], sqlalchemy.
 - All 13 `tests/phases/test_phase_*.py` still fail on purpose.
-- Still no database code, no frontend code, no `docker-compose.yml`.
+- Still no frontend code, no `docker-compose.yml`, no lefthook, no `make` check targets.
+
+The Postgres connection contract task 8 must satisfy, and a wheel-packaging trap that
+would break `alembic upgrade head` in the backend image, are both recorded under the
+compose task in [plans/phase-0.md](../plans/phase-0.md) — read that bullet before
+writing compose.
 
 ---
 
