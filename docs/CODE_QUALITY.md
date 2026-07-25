@@ -183,12 +183,17 @@ Deterministic, free, no network beyond package caches and a throwaway Postgres.
 | Python types | `make type-py` → `mypy .` (incremental cache in CI) | ~30 s |
 | Architecture | `make arch` → `lint-imports` | ~5 s |
 | Migration drift | `make db-check` → `alembic check` (vs. throwaway Postgres service) | ~10 s |
-| Unit tests | `make test` → `pytest -m "not slow"` (respx-mocked, testcontainers Postgres) | ~45 s |
+| Unit tests | `make test` → `pytest -m "not slow and not phase"` (respx-mocked, testcontainers Postgres) | ~45 s |
 | Changed-line coverage | `diff-cover coverage.xml --fail-under=90` | ~2 s |
 | TS format + lint | `make lint-web` → `biome ci . && eslint .` | ~15 s |
 | TS types | `make type-web` → `tsc --noEmit` | ~20 s |
 | API contract | stale-types check (see Tier 2) | ~10 s |
 | Secrets | `gitleaks detect` (full scan in CI; `protect --staged` in the hook) | ~3 s |
+
+`not phase` is a contract, not an optimisation: `tests/phases/*.py` are executable exit
+criteria that are RED until their phase is built. Folding them into the unit-test lane
+would make it permanently red, and a permanently-red gate is one people learn to bypass.
+`make status` is what reports them, one phase at a time.
 
 If the lane drifts past ~2 minutes, move the slowest step to pre-push instead of
 pre-commit and parallelize CI jobs (py / web as separate jobs) — do not delete checks.
@@ -207,12 +212,30 @@ nondeterministic.
 - Results persist to `evaluation_result` (§17) so regressions are queryable, with
   thresholds enforced per Phase 6's exit criterion.
 
-### Git hooks (lefthook), for completeness
+### Git hooks (lefthook)
+
+Target end state:
 
 - **pre-commit** (< 5 s, staged files only): `ruff check --fix`, `ruff format`,
   `biome check --write`, `gitleaks protect --staged`.
 - **pre-push**: `mypy`, `tsc --noEmit`, `eslint`, `pytest -m "not slow"`,
   `lint-imports`.
+
+As built in Phase 0 (`lefthook.yml`), with the deviations spelled out because a hook
+config that quietly disagrees with this doc is how gates rot:
+
+- **pre-commit**: `ruff check --fix`, `ruff format`, `biome check --write` — all
+  `{staged_files}`-scoped with `stage_fixed: true`. gitleaks is **wired but inert**: the
+  job skips with a loud message when the binary is absent, because gitleaks is Tier 2
+  and lands in Phase 1 with the first `.env`. Arming it is deleting one `if` guard.
+- **pre-push**: `make lint-py`, `make type-py`, `make type-web`, `make lint-web`
+  (~6 s total). Every job is a `make` target, so a hook cannot drift from what a human
+  runs. `make test` is `pytest -m "not slow and not phase"` per the lane table above.
+- `lint-imports` is absent until Phase 1 creates contracts to check.
+- **Repo-wide lint runs at pre-push, not pre-commit.** The pre-commit jobs are
+  glob-scoped to staged files, so they never see a change to `pyproject.toml`'s `select`
+  list or to `biome.jsonc`. Without the pre-push `lint-py`/`lint-web` pair the repo could
+  go lint-red with every gate green.
 
 ---
 
@@ -288,15 +311,19 @@ retrieval in 8) — add the layer in the same task that creates the subpackage.
 ## Checklist (work through in order)
 
 ### Phase 0
-- [ ] Install uv; `uv init` workspace; commit `uv.lock`
-- [ ] Ruff configured with `E,F,I,B,UP,S,SIM,C4,PTH,ASYNC,RUF`; `ruff format` as the only formatter
-- [ ] mypy strict + Pydantic plugin; no Pyright anywhere (incl. editor config note)
-- [ ] Biome for apps/web (format + fast lint)
-- [ ] typescript-eslint, type-aware rules only, zero overlap with Biome
-- [ ] tsconfig: `strict: true`, `noUncheckedIndexedAccess: true`; `tsc --noEmit` wired
-- [ ] lefthook root config: pre-commit (ruff/biome/gitleaks-ready), pre-push (types/tests)
-- [ ] `make` targets: `lint-py`, `type-py`, `lint-web`, `type-web`, `test`, `fast`
-- [ ] FAST CI lane running all of the above
+- [x] Install uv; `uv init` workspace; commit `uv.lock`
+- [x] Ruff configured with `E,F,I,B,UP,S,SIM,C4,PTH,ASYNC,RUF`; `ruff format` as the only formatter
+- [x] mypy strict + Pydantic plugin; no Pyright anywhere (incl. editor config note)
+- [x] Biome for apps/web (format + fast lint)
+- [x] typescript-eslint, type-aware rules only, zero overlap with Biome
+- [x] tsconfig: `strict: true`, `noUncheckedIndexedAccess: true`; `tsc --noEmit` wired
+- [x] lefthook root config: pre-commit (ruff/biome/gitleaks-ready), pre-push (types/tests)
+- [x] `make` targets: `lint-py`, `type-py`, `lint-web`, `type-web`, `test`, `fast`
+- [ ] FAST CI lane running all of the above — **moved to Phase 1.** plans/phase-0.md
+      schedules no CI task, and Phase 0 has no remote to run one against. Until it
+      exists, `lefthook`'s pre-push hook plus `make fast` are the only enforcement,
+      and both are bypassable with `--no-verify`. Do not read the ticked boxes above
+      as "CI covers this".
 
 ### Phase 1
 - [ ] gitleaks hook — **before** the first `.env` / LiteLLM key exists

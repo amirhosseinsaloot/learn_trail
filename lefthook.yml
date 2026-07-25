@@ -1,0 +1,114 @@
+# yaml-language-server: $schema=./node_modules/lefthook/schema.json
+#
+# Git hooks for the whole monorepo, from one root file (docs/CODE_QUALITY.md,
+# "Decisions and rejections": lefthook over pre-commit, because this repo is
+# polyglot and lefthook is a language-neutral Go binary driving Ruff, Biome and
+# — from Phase 1 — gitleaks).
+#
+# Two rules shape everything below:
+#
+#   pre-commit  = fast (< 5 s), staged files only, autofixes and re-stages.
+#   pre-push    = the whole FAST lane's slow half: types and tests, full repo.
+#
+# The pre-push jobs deliberately shell out to `make`, so a hook can never drift
+# from the command a human (or CI) runs by hand. pre-commit cannot do that: its
+# whole point is scoping tools to `{staged_files}`, which the repo-wide `make`
+# targets do not do.
+#
+# Never add anything here that calls a model. docs/CODE_QUALITY.md, "SLOW lane":
+# a hook that costs money or flakes teaches people to `--no-verify`, which then
+# bypasses the cheap checks too.
+
+min_version: "2.1.0"
+
+# A hook that silently does nothing is worse than no hook: fail loudly if the
+# lefthook binary has gone missing (e.g. node_modules wiped) instead of letting
+# unchecked commits through.
+assert_lefthook_installed: true
+
+pre-commit:
+  # Sequential on purpose. `ruff check --fix` and `ruff format` rewrite the same
+  # files and must not race; the whole hook is well under a second on a typical
+  # staged set, so there is nothing to win by parallelising the rest.
+  parallel: false
+  jobs:
+    # Tool paths default to the project-local installs the documented setup
+    # creates (`uv sync --all-groups`, `pnpm install`) and stay overridable via
+    # the environment for anyone running a different layout.
+    - name: ruff-check
+      glob: "*.py"
+      run: ${RUFF:-.venv/bin/ruff} check --fix --force-exclude {staged_files}
+      # Autofixed files go back into the index, so what is committed is what was
+      # checked. Unfixable violations still exit non-zero and block the commit.
+      stage_fixed: true
+
+    - name: ruff-format
+      glob: "*.py"
+      run: ${RUFF:-.venv/bin/ruff} format --force-exclude {staged_files}
+      stage_fixed: true
+
+    # Biome resolves only from the ROOT node_modules/.bin (it is installed with
+    # `pnpm add -D -w`), and lefthook runs jobs from the repo root, so this path
+    # is correct from wherever `git commit` was typed.
+    # --files-ignore-unknown keeps explicitly-passed non-Biome files quiet;
+    # --no-errors-on-unmatched keeps a staged set that Biome fully ignores
+    # (e.g. only *.gen.ts) from failing the commit.
+    - name: biome
+      glob: "*.{js,jsx,mjs,cjs,ts,tsx,mts,cts,json,jsonc,css}"
+      run: >-
+        ${BIOME:-node_modules/.bin/biome} check --write
+        --files-ignore-unknown=true --no-errors-on-unmatched {staged_files}
+      stage_fixed: true
+
+    # --- gitleaks: Phase 1, wired but not armed --------------------------------
+    # docs/CODE_QUALITY.md Tier 2 puts gitleaks in Phase 1, "in the same task
+    # that creates the first .env". It is not installed yet (CLAUDE.md invariant
+    # #6), so this job reports and skips rather than hard-failing on a missing
+    # binary — a hook that always fails is a hook everyone bypasses.
+    #
+    # TO ARM IT IN PHASE 1: delete the `if`/`else`/`fi` guard, leaving the
+    # `gitleaks protect` line as the whole `run:`. Nothing else changes.
+    - name: gitleaks
+      run: |
+        if command -v gitleaks >/dev/null 2>&1; then
+          gitleaks protect --staged --redact --no-banner
+        else
+          echo "gitleaks not installed - secret scan SKIPPED (Phase 1: docs/CODE_QUALITY.md Tier 2)"
+        fi
+
+pre-push:
+  # Sequential, and streaming output, because these are the slow checks and a
+  # human is watching. Also correctness: `make type-web` runs `next typegen`,
+  # which rewrites the generated files under .next/types that the type-aware
+  # ESLint run then reads — in parallel those two would race.
+  parallel: false
+  follow: true
+  jobs:
+    # Repo-wide lint, NOT just the staged files pre-commit saw. Without this,
+    # nothing enforces `ruff check .` / `biome ci .` across the whole tree: the
+    # pre-commit jobs are glob-scoped to *.py and *.ts&c, so an edit to
+    # pyproject.toml's `select` list, to `line-length`, or to biome.jsonc can
+    # turn the repo lint-red and pass every gate. Also catches anything that
+    # reached the tree via `--no-verify` or predates these hooks.
+    - name: ruff
+      run: make lint-py
+
+    - name: mypy
+      run: make type-py
+
+    - name: tsc
+      run: make type-web
+
+    # `make lint-web` (biome ci + type-aware ESLint), not a bare `pnpm run
+    # lint:eslint`. Costs about a second more than ESLint alone and buys the
+    # repo-wide Biome half of the same gap — and it keeps this file's rule that
+    # every pre-push job is a `make` target a human can run identically.
+    - name: lint-web
+      run: make lint-web
+
+    - name: pytest
+      run: make test
+
+    # NOT here: `lint-imports`. docs/CODE_QUALITY.md's pre-push list includes it,
+    # but import-linter is Tier 2 / Phase 1 and there are no contracts to check
+    # yet. It joins this list in the task that adds contracts 1-4.

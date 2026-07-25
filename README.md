@@ -25,6 +25,30 @@ Tools land in `.venv/bin/` (`pytest`, `ruff`, `mypy`). Run them via
 `uv.lock` is committed and is the source of truth for versions; change
 dependencies with `uv add`/`uv remove`, never by editing `.venv/` in place.
 
+## Checks and git hooks
+
+Every check runs locally with one command, and CI runs the same targets rather
+than a superset (docs/CODE_QUALITY.md):
+
+```bash
+make fast     # every Phase 0 check: lint-py, type-py, test, lint-web, type-web
+make help     # the full target list
+```
+
+Git hooks are managed by [lefthook](https://lefthook.dev) from the root
+`lefthook.yml`: **pre-commit** autofixes staged files (Ruff lint + format,
+Biome) in well under a second, **pre-push** runs mypy, `tsc --noEmit`, ESLint
+and the unit tests. `pnpm install` wires them automatically; after an install
+that skipped build scripts, run:
+
+```bash
+make hooks    # = lefthook install
+```
+
+`make test` deliberately excludes the `tests/phases/` exit-criterion tests
+(`-m "not phase"`): those are red until their phase is built and are reported
+one phase at a time by `make status`.
+
 ## Where am I?
 
 ```bash
