@@ -127,7 +127,10 @@
       "Bash(.venv/bin/alembic -c packages/database/alembic.ini revision -m \"smoke test delete me\")",
       "Bash(echo \"\\(heads: empty output, exit $?  — zero revisions, as intended\\)\")",
       "Bash(echo \"heads exit=$?\")",
-      "Bash(echo \"heads exit=$? \\(empty output + 0 = zero revisions, correct\\)\")"
+      "Bash(echo \"heads exit=$? \\(empty output + 0 = zero revisions, correct\\)\")",
+      "Bash(echo \"ruff-check exit=$?\")",
+      "Bash(echo \"ruff-format exit=$?\")",
+      "Bash(echo \"mypy exit=$?\")"
     ],
     "deny": [
       "Bash(sudo *)",

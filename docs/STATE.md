@@ -2,9 +2,10 @@
 
 Current phase: **Phase 0 — Development environment** (see [plans/phase-0.md](../plans/phase-0.md))
 
-Last completed task: Phase 0 task 4 — Alembic migration env under `packages/database/`
-(commit `2b0e933`). Earlier: task 1 (SPEC §16 layout) `1de4a59`, task 2 (uv env)
-`1a603eb`, task 3 (FastAPI skeleton + Ruff + mypy) `0c56b7f`.
+Last completed task: Phase 0 task 5 — root pytest config discovers member tests
+(commit `06b9736`). Earlier: task 1 (SPEC §16 layout) `1de4a59`, task 2 (uv env)
+`1a603eb`, task 3 (FastAPI skeleton + Ruff + mypy) `0c56b7f`, task 4 (Alembic env)
+`2b0e933`.
 
 Plan audit (2026-07-24): before starting the build, the Phase 0 plan was amended —
 Phase 0's compose/exit criterion narrowed to Postgres + backend + frontend (services
@@ -26,8 +27,10 @@ and Zod is scoped to purely-local form state only (never API shapes — those co
 openapi-typescript in Phase 1). Neither adds a Phase 0 dependency beyond the ESLint
 plugin.
 
-Next task: Extend the root `pytest.ini` so `apps/api/` and `packages/database/` tests are
-discovered — single root config, no per-package pytest configs — owner `backend-api`.
+Next task: Scaffold `apps/web/` — Next.js + TypeScript + Tailwind with Biome,
+typescript-eslint (type-aware rules only, plus `@next/eslint-plugin-next` as the one
+sanctioned exception), and `tsc --noEmit` with `strict` + `noUncheckedIndexedAccess` —
+owner `frontend-web`. This is the first task that creates `node_modules`.
 
 Correction landed 2026-07-25 (commit `7594deb`): `tests/phases/test_phase_5.py` and
 `plans/phase-5.md` both wrongly claimed the spec defines no Phase 5 exit criterion and
@@ -71,7 +74,11 @@ yet.
   `Base` (zero tables) with a constraint naming convention, `database_url()` reading
   `DATABASE_URL`, and a runnable Alembic env at `packages/database/alembic.ini` with
   **zero revisions**. Driver: psycopg 3. Deps: alembic, psycopg[binary], sqlalchemy.
-- All 13 `tests/phases/test_phase_*.py` still fail on purpose.
+- One root `pytest.ini` discovering `tests/`, `apps/` and `packages/` under
+  `--import-mode=importlib`. `pytest` from the root: **13 failed, 8 passed** — the 13
+  phase placeholders are red on purpose, the 8 real tests in `apps/api/tests/` and
+  `packages/database/tests/` pass. Which of the four test homes a new test belongs in
+  is written down in [CLAUDE.md](../CLAUDE.md).
 - Still no frontend code, no `docker-compose.yml`, no lefthook, no `make` check targets.
 
 The Postgres connection contract task 8 must satisfy, and a wheel-packaging trap that

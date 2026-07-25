@@ -46,9 +46,9 @@ reference Dockerfiles that only exist after the app skeletons land.
 - [x] Add Alembic under packages/database/ and wire it to the Postgres service.
       No models/tables yet — Phase 1 adds `chat`/`message`; this task ends at an
       empty, runnable migration env (owner: `backend-api`) — commit: `2b0e933`
-- [ ] Extend the root pytest.ini so apps/api/ and packages/database/ tests are
+- [x] Extend the root pytest.ini so apps/api/ and packages/database/ tests are
       discovered — single root config, no per-package pytest configs
-      (owner: `backend-api`) — commit: `____`
+      (owner: `backend-api`) — commit: `06b9736`
 - [ ] Scaffold apps/web/ Next.js + TypeScript + Tailwind skeleton with Biome
       (format + fast lint), typescript-eslint (type-aware rules only), and
       `tsc --noEmit` with `strict` + `noUncheckedIndexedAccess`
@@ -87,9 +87,20 @@ reference Dockerfiles that only exist after the app skeletons land.
   flag that makes a silently-missing plugin fatal, so **repeat this check by hand on
   the next mypy major**; if it ever breaks, pin mypy back rather than dropping the
   plugin (it is why mypy was chosen over Pyright) or adding a second checker.
-- **pytest 9 import mode.** When pytest discovery is extended to `apps/api/` and
-  `packages/database/`, same-named test modules in directories without `__init__.py`
-  collide under the default import mode. Resolve in the single root config.
+- **pytest 9 import mode — RESOLVED in task 5.** Same-named test modules across the
+  three trees collide under the default `prepend` mode. Fixed with
+  `addopts = --import-mode=importlib`. Note it must go through `addopts`: there is no
+  `importmode` ini key, and writing one is accepted with a `PytestConfigWarning` and
+  silently does nothing — so "tidying" it into an ini key would quietly reintroduce
+  the collision.
+- **`norecursedirs` is unset on purpose** (task 5). pytest's default already prunes
+  `node_modules`, and setting the key replaces the default rather than extending it.
+  Anything that adds it later must re-list `node_modules`, or pytest starts walking
+  apps/web's dependency tree.
+- **mypy has the same duplicate-module hazard** as pytest's prepend mode. Today's test
+  module names are unique so `mypy .` is green; if two same-named test modules ever
+  land in directories without `__init__.py`, the fix is `explicit_package_bases` /
+  `mypy_path`, not renaming the tests.
 
 ## Not in this phase
 
