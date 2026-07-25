@@ -53,9 +53,9 @@ reference Dockerfiles that only exist after the app skeletons land.
       (format + fast lint), typescript-eslint (type-aware rules only), and
       `tsc --noEmit` with `strict` + `noUncheckedIndexedAccess`
       (owner: `frontend-web`) — commit: `6132a66`
-- [ ] lefthook root config: pre-commit (ruff, biome, gitleaks-ready), pre-push
+- [x] lefthook root config: pre-commit (ruff, biome, gitleaks-ready), pre-push
       (mypy, tsc, unit tests); plus `make` targets so every check runs locally
-      with one command (owner: `infra-devops`) — commit: `____`
+      with one command (owner: `infra-devops`) — commit: `600d919`
       - The `lefthook` npm package fetches its Go binary via an install script,
         and pnpm 10+ blocks those by default. Expect `pnpm add -D -w lefthook` to
         leave no working binary until it is added to the allowed-builds list in

@@ -2,10 +2,13 @@
 
 Current phase: **Phase 0 — Development environment** (see [plans/phase-0.md](../plans/phase-0.md))
 
-Last completed task: Phase 0 task 6 — `apps/web/` Next.js skeleton with Biome and
-type-aware ESLint (commit `6132a66`). Earlier: task 1 (SPEC §16 layout) `1de4a59`,
-task 2 (uv env) `1a603eb`, task 3 (FastAPI skeleton + Ruff + mypy) `0c56b7f`,
-task 4 (Alembic env) `2b0e933`, task 5 (pytest discovery) `06b9736`.
+Last completed task: Phase 0 task 7 — lefthook hooks + `make` targets (commit
+`600d919`). Earlier: task 1 (SPEC §16 layout) `1de4a59`, task 2 (uv env) `1a603eb`,
+task 3 (FastAPI skeleton + Ruff + mypy) `0c56b7f`, task 4 (Alembic env) `2b0e933`,
+task 5 (pytest discovery) `06b9736`, task 6 (Next.js skeleton) `6132a66`.
+
+**Two tasks remain in Phase 0**: docker-compose.yml, then the real
+`tests/phases/test_phase_0.py`.
 
 Plan audit (2026-07-24): before starting the build, the Phase 0 plan was amended —
 Phase 0's compose/exit criterion narrowed to Postgres + backend + frontend (services
@@ -27,12 +30,13 @@ and Zod is scoped to purely-local form state only (never API shapes — those co
 openapi-typescript in Phase 1). Neither adds a Phase 0 dependency beyond the ESLint
 plugin.
 
-Next task: lefthook root config — pre-commit (ruff, biome, gitleaks-ready), pre-push
-(mypy, tsc, unit tests) — plus `make` targets so every check runs locally with one
-command — owner `infra-devops`. Four gotchas for it are recorded under that task in
-plans/phase-0.md (pnpm blocks lefthook's install script; existing script names to wire
-rather than reinvent; `biome` resolves only from the root `node_modules/.bin`;
-`typecheck` must keep its `next typegen` prefix).
+Next task: Write `docker-compose.yml` — Postgres, backend, frontend, each with a
+healthcheck — owner `infra-devops`. Exactly three services; LiteLLM joins in Phase 1 and
+Phoenix in Phase 5. The Postgres connection contract, the wheel-packaging trap that
+would leave the backend image without a migration env, the backend healthcheck target
+(`/openapi.json`, since there are no routes), and the frontend's port/dev command/
+repo-root build context are all recorded under that task in plans/phase-0.md. Read that
+bullet first — it exists so this task does not rediscover them.
 
 Correction landed 2026-07-25 (commit `7594deb`): `tests/phases/test_phase_5.py` and
 `plans/phase-5.md` both wrongly claimed the spec defines no Phase 5 exit criterion and
@@ -92,7 +96,13 @@ yet.
 - Frontend commands: root `pnpm run lint:web` / `type:web`; in `apps/web`, `dev`,
   `build`, `lint`, `typecheck` (= `next typegen && tsc --noEmit` — the prefix is
   load-bearing, the tsconfig includes generated files).
-- Still no `docker-compose.yml`, no lefthook, no `make` check targets.
+- `lefthook.yml` + installed `.git/hooks`. pre-commit (~0.1s) autofixes and re-stages
+  staged files; pre-push (~5s) runs `make lint-py type-py type-web lint-web test`.
+  gitleaks is wired but inert until Phase 1. `make help` lists every target;
+  `make fast` runs the whole Phase 0 check set.
+- **No CI.** Hooks and `make fast` are the only enforcement, and both are bypassable
+  with `--no-verify`. The FAST CI lane moved to Phase 1.
+- Still no `docker-compose.yml`.
 
 The Postgres connection contract task 8 must satisfy, and a wheel-packaging trap that
 would break `alembic upgrade head` in the backend image, are both recorded under the
