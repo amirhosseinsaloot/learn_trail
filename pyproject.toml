@@ -9,6 +9,7 @@ requires-python = ">=3.12"
 # runtime + dev environment. Members declare their own real dependencies.
 dependencies = [
     "learntrail-api",
+    "learntrail-database",
 ]
 
 # Root is an environment/tooling project, not an installable distribution:
@@ -18,13 +19,15 @@ dependencies = [
 package = false
 
 # Members are listed explicitly, not globbed: apps/web is a pnpm project and
-# packages/* are still .gitkeep-only, and uv errors on a member directory with
-# no pyproject.toml. packages/database joins this list in Phase 0 task 4.
+# packages/ai_core and packages/evals are still .gitkeep-only, and uv errors on
+# a member directory with no pyproject.toml. They join this list in the phase
+# that introduces them (ai_core in Phase 1, evals in Phase 6).
 [tool.uv.workspace]
-members = ["apps/api"]
+members = ["apps/api", "packages/database"]
 
 [tool.uv.sources]
 learntrail-api = { workspace = true }
+learntrail-database = { workspace = true }
 
 # Tier 1 Python tooling only (docs/CODE_QUALITY.md). Everything else
 # (anyio, respx, testcontainers, pytest-cov, import-linter, ...) is Tier 2
@@ -74,7 +77,7 @@ select = [
 "**/tests/**/*.py" = ["S101"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["api"]
+known-first-party = ["api", "database"]
 
 [tool.ruff.format]
 docstring-code-format = true

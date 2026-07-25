@@ -252,6 +252,11 @@ layers = [
 ]
 ```
 
+**Outside the contract graph:** `packages/database/migrations/env.py` is not inside any
+root package (`migrations/` has no `__init__.py`), so `lint-imports` will never scan it.
+It may import only `database` plus third-party packages — an `env.py` that reached into
+`ai_core` would pass every contract silently. Enforced by review, not by tooling.
+
 Contracts land incrementally: 1–4 in Phase 1 (the moment `ai_core` and `database`
 have code), contract 5 grows a layer per phase (graphs in 2, agents in 3, safety in 4,
 retrieval in 8) — add the layer in the same task that creates the subpackage.
