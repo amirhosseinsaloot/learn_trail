@@ -49,13 +49,26 @@ reference Dockerfiles that only exist after the app skeletons land.
 - [x] Extend the root pytest.ini so apps/api/ and packages/database/ tests are
       discovered — single root config, no per-package pytest configs
       (owner: `backend-api`) — commit: `06b9736`
-- [ ] Scaffold apps/web/ Next.js + TypeScript + Tailwind skeleton with Biome
+- [x] Scaffold apps/web/ Next.js + TypeScript + Tailwind skeleton with Biome
       (format + fast lint), typescript-eslint (type-aware rules only), and
       `tsc --noEmit` with `strict` + `noUncheckedIndexedAccess`
-      (owner: `frontend-web`) — commit: `____`
+      (owner: `frontend-web`) — commit: `6132a66`
 - [ ] lefthook root config: pre-commit (ruff, biome, gitleaks-ready), pre-push
       (mypy, tsc, unit tests); plus `make` targets so every check runs locally
       with one command (owner: `infra-devops`) — commit: `____`
+      - The `lefthook` npm package fetches its Go binary via an install script,
+        and pnpm 10+ blocks those by default. Expect `pnpm add -D -w lefthook` to
+        leave no working binary until it is added to the allowed-builds list in
+        `pnpm-workspace.yaml`.
+      - Script names task 6 established, to wire up rather than reinvent: root
+        `pnpm run lint:web` (= `biome ci . && eslint .`) and `pnpm run type:web`;
+        in `apps/web`, `lint`, `typecheck`, `build`, `dev`.
+      - `biome` resolves only from the **root** `node_modules/.bin`, not
+        `apps/web`'s. Invoke Biome from the repo root; ESLint and tsc via
+        `pnpm --filter web`.
+      - `typecheck` is `next typegen && tsc --noEmit`, not bare `tsc`: the
+        tsconfig includes generated, gitignored files, so bare `tsc` fails on a
+        clean checkout. Do not "simplify" it.
 - [ ] Write docker-compose.yml: Postgres, backend, frontend — each with a healthcheck
       (owner: `infra-devops`) — commit: `____`
       - Postgres contract, fixed by task 4 (`packages/database/database/config.py`):
@@ -74,6 +87,15 @@ reference Dockerfiles that only exist after the app skeletons land.
       - Backend healthcheck target: `apps/api` has no routes by design, so use
         FastAPI's built-in `/openapi.json`. Do **not** add a health endpoint —
         routes are Phase 1.
+      - Frontend contract, fixed by task 6: port 3000, dev command
+        `pnpm --filter web dev`, healthcheck `GET http://localhost:3000/` → 200
+        (the page is static, so the frontend can be healthy independently of the
+        backend). Build context must be the **repo root**, not `apps/web` —
+        `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml` and `biome.jsonc`
+        all live there and `pnpm install --frozen-lockfile` needs them. There is
+        no `.dockerignore` yet; without one, `COPY` drags in `node_modules/`,
+        `.next/` and `.venv/`. Do not bind-mount over `node_modules` (pnpm
+        symlink farm) — use anonymous volumes.
 - [ ] Replace the placeholder tests/phases/test_phase_0.py with the executable exit
       criterion described above (owner: `backend-api`) — commit: `____`
 

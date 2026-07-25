@@ -130,7 +130,10 @@
       "Bash(echo \"heads exit=$? \\(empty output + 0 = zero revisions, correct\\)\")",
       "Bash(echo \"ruff-check exit=$?\")",
       "Bash(echo \"ruff-format exit=$?\")",
-      "Bash(echo \"mypy exit=$?\")"
+      "Bash(echo \"mypy exit=$?\")",
+      "Bash(cp -r /tmp/claude-1000/-home-amir-learn-trail/9b0bfad2-421d-4cff-a256-db11739bc4a9/scratchpad/webgen/src apps/web/)",
+      "Bash(npm view *)",
+      "Bash(pkill -f \"next dev\")"
     ],
     "deny": [
       "Bash(sudo *)",
