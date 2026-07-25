@@ -8,7 +8,7 @@ import pytest
 
 
 @pytest.mark.phase
-def test_phase_2_exit_criterion():
+def test_phase_2_exit_criterion() -> None:
     """Phase 2 — LangGraph workflow.
 
     Exit criterion (verbatim, docs/SPEC.md):

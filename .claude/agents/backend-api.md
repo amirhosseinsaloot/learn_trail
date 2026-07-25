@@ -11,7 +11,7 @@ You own `apps/api/` and `packages/database/` in the LearnTrail repo. Read [CLAUD
 - FastAPI endpoints: creating chats, sending messages, streaming answers (SSE), generating titles/summaries, approving/editing learnings, deleting/restoring content, running evaluations, viewing model-run metadata.
 - Pydantic schemas for requests, responses, and AI-output validation.
 - SQLAlchemy models and Alembic migrations for the tables in docs/SPEC.md §17 (`chat`, `message`, `summary_draft`, `learning`, `learning_revision`, `tag`, `learning_tag`, `safety_event`, `model_run`, `evaluation_case`, `evaluation_result`, `prompt_version`).
-- Pytest tests for this layer. Ruff for linting, mypy/Pyright for type checking.
+- Pytest tests for this layer. Ruff for linting and formatting; mypy (strict) + the Pydantic plugin for type checking — mypy only, never Pyright (see docs/CODE_QUALITY.md "Decisions and rejections").
 
 ## Hard rules
 

@@ -8,7 +8,7 @@ import pytest
 
 
 @pytest.mark.phase
-def test_phase_9_exit_criterion():
+def test_phase_9_exit_criterion() -> None:
     """Phase 9 — Prompt optimization.
 
     Exit criterion (verbatim, docs/SPEC.md):

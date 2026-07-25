@@ -8,7 +8,7 @@ import pytest
 
 
 @pytest.mark.phase
-def test_phase_1_exit_criterion():
+def test_phase_1_exit_criterion() -> None:
     """Phase 1 — Basic AI chat.
 
     Exit criterion (verbatim, docs/SPEC.md):

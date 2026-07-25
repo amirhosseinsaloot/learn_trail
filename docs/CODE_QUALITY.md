@@ -127,6 +127,7 @@ Either/or choices, recorded so no session re-litigates them:
 | LLM call replay | **respx** | pytest-recording (VCR) | All model traffic is httpx under the hood (OpenAI-compatible client → LiteLLM proxy). respx intercepts at the httpx transport layer with first-class async + streaming support, which SSE tests need. VCR cassettes additionally record real request headers — an `Authorization: Bearer sk-…` sitting in a committed cassette is exactly the leak gitleaks exists to prevent; hand-built respx fixtures never contain secrets |
 | Test database | **testcontainers (real Postgres)** | SQLite stand-in | pgvector arrives in Phase 8, and JSONB/full-text behavior differs today; SQLite green ≠ Postgres green |
 | Coverage gate | **diff-cover (changed lines)** | total-% threshold | Total % rewards padding old code with trivial tests; changed-line coverage gates what each commit actually touched |
+| Python line length | **100 columns** | Ruff's default 88; no limit | 88 forces awkward wrapping on the verbatim spec quotes the phase tests carry. Set globally in `[tool.ruff]`, never per-file, and never via `noqa` — a long line gets rewrapped, not exempted |
 | Next.js lint rules | **`@next/eslint-plugin-next`** — the one sanctioned non-type-aware ESLint exception | full `eslint-config-next`; dropping Next rules entirely | Next's rules are domain rules (`no-img-element`, `no-html-link-for-pages`), not style, so they do not overlap Biome. The full `eslint-config-next` preset drags in the style/import rules Biome owns; the bare plugin does not |
 | Frontend validation | **Zod for purely-local form state only** | Zod for API request/response shapes | API shapes come from `openapi-typescript` (Pydantic is the single source of truth, invariant #4). Hand-written Zod for the same shapes is a second source of truth that silently drifts |
 
@@ -135,7 +136,11 @@ Rejected outright (do not add):
 - **Black, isort, flake8, Bandit** — subsumed by Ruff (above).
 - **Pyright** — mypy chosen (above).
 - **Vulture** — dead-code detection with a false-positive rate that trains people to ignore it; Ruff `F401`/`F841` plus knip (TS side, on trigger) cover the useful subset.
-- **Radon / Xenon** — complexity metrics; Ruff's `C901` (mccabe) covers the actionable part without a second report format.
+- **Radon / Xenon** — complexity metrics; Ruff's `C901` (mccabe) covers the actionable
+  part without a second report format. **Caveat (2026-07-25):** `C901` lives in the `C90`
+  rule set, which the Tier 1 `select` list above does not include — only `C4`
+  (comprehensions). So complexity is currently unchecked and this rejection rests on a
+  rule that is not enabled. See conflict 5 below.
 - **SonarQube** — a server, a database, and a quality-gate bureaucracy for a single-user repo; every finding it would produce is covered by Ruff/mypy/Semgrep.
 - **commitlint** — enforcing commit-message grammar on a single committer is process without a consumer.
 - **CodeQL** — needs a public repo or GitHub Advanced Security; Semgrep OSS fills the semantic-rule niche when triggered.
@@ -310,6 +315,16 @@ retrieval in 8) — add the layer in the same task that creates the subpackage.
    concept); this doc reads §19 the same way (end state, not
    day one). Flagging because tooling (DeepEval) is affected: the SLOW lane
    exists as *design* from Phase 0 but gets its first real job in Phase 6.
+5. **`C901` cited but not selected** (found 2026-07-25 auditing the Phase 0 Ruff
+   config). The Tier 1 table's `select` list — `E,F,I,B,UP,S,SIM,C4,PTH,ASYNC,RUF` —
+   omits `C90`, yet the Radon/Xenon rejection above justifies itself with `C901`.
+   Cyclomatic complexity is therefore checked by nothing. Options: (a) add `C90` to
+   the Tier 1 set with a `max-complexity` threshold, (b) drop the `C901` justification
+   and accept that complexity is unmeasured. Deliberately NOT resolved unilaterally:
+   changing `select` is a tooling decision, and the Phase 0 config was built to match
+   the Tier 1 list exactly. Needs a call; (a) recommended, deferred to whenever the
+   first genuinely branchy function appears (there is no Python logic to measure yet).
+
 4. **"typescript-eslint type-aware rules only"** drops `eslint-config-next`
    (Next.js's own rules: `@next/next/no-img-element`, react-hooks deps, etc.),
    which Biome does not fully replace. **RESOLVED 2026-07-25:** option (b) —

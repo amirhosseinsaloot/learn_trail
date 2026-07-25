@@ -8,13 +8,15 @@ import pytest
 
 
 @pytest.mark.phase
-def test_phase_5_exit_criterion():
+def test_phase_5_exit_criterion() -> None:
     """Phase 5 — Observability.
 
     PROXY criterion — docs/SPEC.md defines no verbatim exit criterion for this
     phase. This is a derived stand-in, not a quote from the spec:
 
-        "A chat request emits a trace containing the expected span names (chat.request, load_conversation, input_guardrails, context_builder, llm.generate, output_guardrails, persist_message)."
+        "A chat request emits a trace containing the expected span names
+        (chat.request, load_conversation, input_guardrails, context_builder,
+        llm.generate, output_guardrails, persist_message)."
 
     TODO(phase 5): replace this placeholder with a real assertion for the
     criterion above once Phase 5 is implemented. Until then it must stay red.

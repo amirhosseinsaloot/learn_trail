@@ -4,10 +4,12 @@ version = "0.1.0"
 description = "Single-user AI learning workspace: persistent Q&A distilled into human-approved Learnings."
 readme = "README.md"
 requires-python = ">=3.12"
-# No runtime dependencies at the root yet. Application dependencies
-# (FastAPI, SQLAlchemy, Alembic, ...) arrive with apps/api and
-# packages/database in later Phase 0 tasks.
-dependencies = []
+# The root is an aggregator: it depends on the workspace members so that the
+# single documented command (`uv sync --all-groups`) installs the whole repo's
+# runtime + dev environment. Members declare their own real dependencies.
+dependencies = [
+    "learntrail-api",
+]
 
 # Root is an environment/tooling project, not an installable distribution:
 # no build backend, nothing to build. Application code lives in apps/ and
@@ -15,16 +17,90 @@ dependencies = []
 [tool.uv]
 package = false
 
+# Members are listed explicitly, not globbed: apps/web is a pnpm project and
+# packages/* are still .gitkeep-only, and uv errors on a member directory with
+# no pyproject.toml. packages/database joins this list in Phase 0 task 4.
+[tool.uv.workspace]
+members = ["apps/api"]
+
+[tool.uv.sources]
+learntrail-api = { workspace = true }
+
 # Tier 1 Python tooling only (docs/CODE_QUALITY.md). Everything else
 # (anyio, respx, testcontainers, pytest-cov, import-linter, ...) is Tier 2
 # and lands in Phase 1, per CLAUDE.md invariant #6.
 [dependency-groups]
 dev = [
-    "mypy>=2.3",
+    "mypy>=2.3,<3",
     "pytest>=9.1",
-    "ruff>=0.16",
+    "ruff>=0.16,<0.17",
 ]
 
-# Ruff and mypy are deliberately unconfigured here: their rule sets
-# (Ruff E,F,I,B,UP,S,SIM,C4,PTH,ASYNC,RUF; mypy strict + Pydantic plugin)
-# land with the apps/api skeleton they check.
+# --------------------------------------------------------------------------
+# Ruff — the only Python linter AND the only formatter (docs/CODE_QUALITY.md,
+# "Decisions and rejections": replaces Black, isort, flake8 and Bandit).
+# --------------------------------------------------------------------------
+[tool.ruff]
+# Refuse to run under a drifting Ruff: rule sets and formatting are not stable
+# across minor versions, so pin the same range the dev group locks.
+required-version = ">=0.16,<0.17"
+target-version = "py312"
+line-length = 100
+extend-exclude = [
+    # Claude Code harness scripts, not application source; they run under the
+    # ambient interpreter, outside this project's dependency graph.
+    ".claude",
+]
+
+[tool.ruff.lint]
+# Exactly the docs/CODE_QUALITY.md Tier 1 set — no more, no less.
+select = [
+    "E",     # pycodestyle errors
+    "F",     # pyflakes: unused / undefined
+    "I",     # isort: import order
+    "B",     # flake8-bugbear
+    "UP",    # pyupgrade
+    "S",     # flake8-bandit (security)
+    "SIM",   # flake8-simplify
+    "C4",    # flake8-comprehensions
+    "PTH",   # flake8-use-pathlib
+    "ASYNC", # flake8-async
+    "RUF",   # Ruff-native
+]
+
+[tool.ruff.lint.per-file-ignores]
+# `assert` is how pytest expresses assertions; S101 is noise in test code only.
+"tests/**/*.py" = ["S101"]
+"**/tests/**/*.py" = ["S101"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["api"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+# --------------------------------------------------------------------------
+# mypy — the only type checker (docs/CODE_QUALITY.md, "Decisions and
+# rejections": Pyright is rejected; do not add a second checker or any
+# Pyright/basedpyright config, including in editor settings).
+# --------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+# The Pydantic plugin is the documented reason mypy was chosen over Pyright
+# (this codebase is Pydantic-heavy by design — CLAUDE.md invariant #4). mypy has
+# no stable plugin API, so a major bump can break it quietly; there is no config
+# flag that turns that into a hard error. It is verified by running mypy over a
+# BaseModel and confirming init_typed/init_forbid_extra actually bite — done for
+# mypy 2.3.0, see plans/phase-0.md. Re-verify on the next mypy major.
+plugins = ["pydantic.mypy"]
+exclude = [
+    '^\.venv/',
+    '^\.claude/',
+]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+warn_untyped_fields = true

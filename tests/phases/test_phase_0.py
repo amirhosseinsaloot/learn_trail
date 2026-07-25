@@ -8,7 +8,7 @@ import pytest
 
 
 @pytest.mark.phase
-def test_phase_0_exit_criterion():
+def test_phase_0_exit_criterion() -> None:
     """Phase 0 — Development environment.
 
     PROXY criterion — docs/SPEC.md defines no verbatim exit criterion for this

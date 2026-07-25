@@ -1,14 +1,15 @@
 """Phase 6 — Evaluation-driven development
 
-See docs/SPEC.md, "Phase 6 — Evaluation-driven development" section, for the full Build/AI-stack/Learn
-breakdown. This file only encodes the exit criterion as an executable check.
+See docs/SPEC.md, "Phase 6 — Evaluation-driven development" section, for the full
+Build/AI-stack/Learn breakdown. This file only encodes the exit criterion as an
+executable check.
 """
 
 import pytest
 
 
 @pytest.mark.phase
-def test_phase_6_exit_criterion():
+def test_phase_6_exit_criterion() -> None:
     """Phase 6 — Evaluation-driven development.
 
     Exit criterion (verbatim, docs/SPEC.md):

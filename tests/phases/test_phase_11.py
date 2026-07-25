@@ -8,13 +8,15 @@ import pytest
 
 
 @pytest.mark.phase
-def test_phase_11_exit_criterion():
+def test_phase_11_exit_criterion() -> None:
     """Phase 11 — Local models.
 
     PROXY criterion — docs/SPEC.md defines no verbatim exit criterion for this
     phase. This is a derived stand-in, not a quote from the spec:
 
-        "A chat request can be served entirely by a locally-registered LiteLLM model (Ollama/vLLM) with no outbound call to a cloud provider, and a cloud-versus-local benchmark result is recorded."
+        "A chat request can be served entirely by a locally-registered LiteLLM
+        model (Ollama/vLLM) with no outbound call to a cloud provider, and a
+        cloud-versus-local benchmark result is recorded."
 
     TODO(phase 11): replace this placeholder with a real assertion for the
     criterion above once Phase 11 is implemented. Until then it must stay red.

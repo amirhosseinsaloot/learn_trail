@@ -8,7 +8,7 @@ import pytest
 
 
 @pytest.mark.phase
-def test_phase_7_exit_criterion():
+def test_phase_7_exit_criterion() -> None:
     """Phase 7 — Red teaming.
 
     Exit criterion (verbatim, docs/SPEC.md):

@@ -1,14 +1,15 @@
 """Phase 3 — Structured summary generation
 
-See docs/SPEC.md, "Phase 3 — Structured summary generation" section, for the full Build/AI-stack/Learn
-breakdown. This file only encodes the exit criterion as an executable check.
+See docs/SPEC.md, "Phase 3 — Structured summary generation" section, for the full
+Build/AI-stack/Learn breakdown. This file only encodes the exit criterion as an
+executable check.
 """
 
 import pytest
 
 
 @pytest.mark.phase
-def test_phase_3_exit_criterion():
+def test_phase_3_exit_criterion() -> None:
     """Phase 3 — Structured summary generation.
 
     Exit criterion (verbatim, docs/SPEC.md):
