@@ -4,9 +4,14 @@ Status: Not started
 
 ## Exit criterion
 
-PROXY criterion — docs/SPEC.md defines no verbatim exit criterion for this phase:
+Verbatim, docs/SPEC.md:
 
-> A chat request emits a trace containing the expected span names (chat.request, load_conversation, input_guardrails, context_builder, llm.generate, output_guardrails, persist_message).
+> A poor answer can be traced through context construction, model execution, guardrails and persistence.
+
+How this will be asserted: a chat request emits a trace containing the expected span
+names (`chat.request`, `load_conversation`, `input_guardrails`, `context_builder`,
+`llm.generate`, `output_guardrails`, `persist_message`) — the four stages the criterion
+names, made observable. That span list is an implementation choice, not the criterion.
 
 ## Phase test
 

@@ -11,12 +11,16 @@ import pytest
 def test_phase_5_exit_criterion() -> None:
     """Phase 5 — Observability.
 
-    PROXY criterion — docs/SPEC.md defines no verbatim exit criterion for this
-    phase. This is a derived stand-in, not a quote from the spec:
+    Exit criterion (verbatim, docs/SPEC.md):
 
-        "A chat request emits a trace containing the expected span names
-        (chat.request, load_conversation, input_guardrails, context_builder,
-        llm.generate, output_guardrails, persist_message)."
+        "A poor answer can be traced through context construction, model
+        execution, guardrails and persistence."
+
+    How this will be asserted: a chat request emits a trace containing the
+    expected span names (chat.request, load_conversation, input_guardrails,
+    context_builder, llm.generate, output_guardrails, persist_message) — the
+    four stages the criterion names, made observable. That span list is an
+    implementation choice, not the criterion itself.
 
     TODO(phase 5): replace this placeholder with a real assertion for the
     criterion above once Phase 5 is implemented. Until then it must stay red.
