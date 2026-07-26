@@ -7,15 +7,22 @@ See [plans/phase-1.md](../plans/phase-1.md).
 correct: its exit criterion (stop the app, restart, continue a conversation) is
 not met, because there is no chat endpoint yet.
 
-Phase 1 progress — **2 of 6 tasks landed**:
+Phase 1 progress — **3 of 6 tasks landed**:
 
 - [x] `chat` + `message` tables + first Alembic revision + async session — `421feb8`
 - [x] LiteLLM gateway service + the three aliases — `e9a9118`
-- [ ] Chat endpoints (create / send / resume / rename / soft-delete)
+- [x] Chat endpoints: create / list / resume / rename / soft-delete / restore /
+      append a user turn — `41808f1`
 - [ ] LiteLLM call wrapped in Pydantic models (`packages/ai_core`, not yet a member)
-- [ ] SSE streaming endpoint
+- [ ] SSE streaming endpoint (the answer half of "send a message")
 - [ ] Chat page in `apps/web`
 - [ ] Replace the `tests/phases/test_phase_1.py` placeholder
+
+**The persistence half of the Phase 1 exit criterion is already demonstrated**,
+against the running stack rather than a test client: create a chat, append two
+messages, `docker compose stop backend && start backend`, GET the chat — the
+transcript comes back intact. What is missing for the criterion proper is an
+answer to resume *to*, i.e. the model call and the SSE endpoint.
 
 Phase 0 tasks, for reference: task 1 `1de4a59`, 2 `1a603eb`, 3 `0c56b7f`,
 4 `2b0e933`, 5 `06b9736`, 6 `6132a66`, 7 `600d919`, 8 `e7bed57`, 9 `872bcb5`.
@@ -37,23 +44,25 @@ root pyproject.toml is part of the task that first puts code there.
 
 Two things `git log` cannot show, both still open:
 
-- **No `.env`, and no `.env.example` in the repo.** The gateway starts without a
-  credential by design (`env_file` uses `required: false`), so the stack is
-  healthy — but no model call can succeed until a key exists. Create `.env` at
-  the repo root with `ANTHROPIC_API_KEY=<key>` and
-  `LITELLM_MASTER_KEY=<any string>`. `.env.example` is absent because the
-  agent's permission settings deny writes to `.env*`; `.gitignore` already
-  carries the `!.env.example` negation for whenever someone adds it.
+- **No `.env`.** `.env.example` is now committed (`e6616d6`), but the real `.env`
+  does not exist, so `ANTHROPIC_API_KEY` is unset and **no model call can
+  succeed**. The stack is still healthy — the gateway's `env_file` uses
+  `required: false` and its healthcheck probes liveliness, not providers — so
+  this surfaces only when something first calls a model. `cp .env.example .env`
+  and fill in a key. The agent cannot do this itself: its permission settings
+  deny both reads and writes under `.env*`.
 - **gitleaks is still inert.** lefthook.yml skips it when the binary is missing,
-  and the first real credential has now arrived — so this is overdue. Arming it
-  means installing the binary first, then deleting the `if`/`else`/`fi` guard as
+  and the first credential path now exists, so this is overdue. Arming it means
+  installing the binary first, then deleting the `if`/`else`/`fi` guard as
   lefthook.yml's own comment instructs. Arming it before installing would
   hard-fail every commit.
 
 Also worth knowing: the Docker **images are built and the stack may still be
 running** on this machine (`make ps`). `make down` keeps the `postgres_data`
 volume; `docker compose down -v` throws the data away. The database is migrated
-to `head` — one revision, `chat` and `message`, zero rows.
+to `head` — one revision, `chat` and `message` — and **has zero rows**: the
+end-to-end verification above wrote a chat and two messages, then hard-deleted
+them (which also exercised `ON DELETE CASCADE` against real data).
 
 ## What exists right now
 
@@ -84,8 +93,11 @@ to `head` — one revision, `chat` and `message`, zero rows.
 - Ruff (Tier 1 rule sets, 100 cols) and mypy (strict + Pydantic plugin) are configured
   in the root `pyproject.toml` and **green across the repo**.
 - `apps/api/` — `learntrail-api`, a hatchling distribution exposing top-level `api`.
-  `api.main:app` is a FastAPI app object with **no routes**; only FastAPI's built-in
-  `/openapi.json`, `/docs`, `/redoc` exist. Runtime deps: fastapi, pydantic, uvicorn.
+  `api.main:app` is a thin entrypoint that includes `api.routers.chats`; handlers
+  live in `api/routers/`, wire schemas in `api/schemas.py`. Surface:
+  `GET|POST /chats`, `GET|PATCH|DELETE /chats/{id}`, `POST /chats/{id}/restore`,
+  `POST /chats/{id}/messages`. No auth, no CORS yet (CORS lands with the first
+  browser fetch). Runtime deps: fastapi, pydantic, uvicorn, learntrail-database.
 - `packages/database/` — `learntrail-database`, exposing top-level `database`.
   `Base` + a constraint naming convention, `database_url()` reading
   `DATABASE_URL`, an async engine and session factory in `database/session.py`,

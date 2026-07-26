@@ -1,7 +1,7 @@
 # Phase 1 — Basic AI chat
 
-Status: IN PROGRESS — 2 of 6 tasks landed (tables + gateway). Phase test is still
-a placeholder, so `make status` reports Phase 1 FAIL, correctly.
+Status: IN PROGRESS — 3 of 6 tasks landed (tables, gateway, endpoints). Phase test
+is still a placeholder, so `make status` reports Phase 1 FAIL, correctly.
 
 ## Exit criterion
 
@@ -15,7 +15,37 @@ Exit criterion (verbatim, docs/SPEC.md):
 
 ## Tasks
 
-- [ ] Create-chat, send-message, resume-conversation, rename-chat, soft-delete-chat endpoints (owner: `backend-api`) — commit: `____`
+- [x] Create-chat, send-message, resume-conversation, rename-chat, soft-delete-chat endpoints (owner: `backend-api`) — commit: `41808f1`
+      - Answer generation is **not** in this task: docs/SPEC.md §6 lists "sending
+        messages" and "streaming answers" separately, so `POST
+        /chats/{id}/messages` persists the user turn and the SSE task adds the
+        answer endpoint. That split is what makes these endpoints testable with
+        no model and no key.
+      - **Two async-SQLAlchemy traps, both of which produce a 500 on the happy
+        path and neither of which a sync session would show:**
+        (1) serializing a model with an unloaded relationship is lazy IO from
+        Pydantic's synchronous attribute access → `MissingGreenlet`; pass
+        `messages=[]` on a newly-constructed `Chat` to mark the collection
+        loaded. (2) `onupdate` is evaluated by the *database*, so after any
+        UPDATE the ORM marks `updated_at` stale and reading it back blows up —
+        every mutate-then-return handler needs
+        `await db.refresh(chat, attribute_names=["updated_at"])`.
+        `expire_on_commit=False` does **not** cover this; the staleness comes
+        from the server-side default, not the commit.
+      - **`now()` is `transaction_timestamp()` in Postgres and is frozen for the
+        whole transaction.** Anything ordered by a `now()`-maintained column
+        silently fails to reorder when two writes share a transaction. Both the
+        column's `onupdate` and the explicit touch use `clock_timestamp()`.
+        `onupdate` is ORM-side, not DDL, so no migration was needed —
+        `alembic check` confirms.
+      - `lazy="selectin"` means a list query fetches every message of every
+        listed chat. The list endpoint uses `noload`.
+      - **As of FastAPI 0.140 `include_router` does not flatten routes into
+        `app.routes`** — it inserts a private `_IncludedRouter`. A test that
+        enumerates `app.routes` finds only the four built-in doc routes and
+        passes while asserting nothing. Assert the surface through
+        `app.openapi()["paths"]`, which is also the real contract (the frontend's
+        types are generated from it).
 - [x] chat and message tables + Alembic migration (no user_id column) (owner: `backend-api`) — commit: `421feb8`
       - Both forward-carried notes were hit and handled: `CheckConstraint`s all
         carry an explicit `name=`, and `packages/database` now depends on
