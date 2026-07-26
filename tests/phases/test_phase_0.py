@@ -17,12 +17,17 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_FILE = REPO_ROOT / "docker-compose.yml"
 
-# Exactly the services Phase 0 defines — not a minimum. LiteLLM Proxy joins
-# docker-compose.yml in Phase 1 and Phoenix (+ OTel collector) in Phase 5, per
-# CLAUDE.md invariant #6, so an extra service here is a phase violation and this
-# test asserts set equality rather than a subset. Phase 1 widens this list as
-# part of adding its own service.
-PHASE_0_SERVICES = frozenset({"postgres", "backend", "frontend"})
+# Every service compose is expected to define *right now* — not a minimum, and
+# not only Phase 0's three. Phoenix (+ OTel collector) joins in Phase 5 and the
+# optional local model runtime in Phase 11, per CLAUDE.md invariant #6, so an
+# unlisted service is a phase violation and this is set equality, not a subset.
+#
+# `litellm` was added by Phase 1. That is the intended workflow: the phase that
+# adds a compose service widens this constant in the same commit. Phase 0's own
+# criterion — every service healthy — is unchanged by the addition; it simply
+# now covers four services, which is why the name below is no longer accurate
+# and the comment says so rather than pretending otherwise.
+PHASE_0_SERVICES = frozenset({"postgres", "backend", "frontend", "litellm"})
 
 # Distinguishing the two failure modes is the whole point of the messages below
 # (plans/phase-0.md, "Phase test"): "the stack is not running" is an environment
