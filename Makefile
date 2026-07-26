@@ -48,7 +48,11 @@ PHASE_TITLES := \
 	11:Local_models \
 	12:Advanced_learning_features
 
-.PHONY: status help lint-py type-py lint-web type-web test fast hooks
+# Docker Compose is invoked through a variable so the plugin form used here
+# (`docker compose`, v2+) is stated once rather than in five recipes.
+COMPOSE := docker compose
+
+.PHONY: status help lint-py type-py lint-web type-web test fast hooks up down logs ps
 
 # Single command that answers "where am I": per-phase exit-criterion test
 # results, then recent git history and working-tree state. Status is derived
@@ -116,6 +120,33 @@ fast: lint-py type-py test lint-web type-web ## Every Phase 0 check, in one comm
 
 hooks: ## (Re)install the git hooks defined in lefthook.yml
 	$(LEFTHOOK) install
+
+# ---------------------------------------------------------------------------
+# Local development stack (docker-compose.yml, docs/SPEC.md §6).
+#
+# Phase 0 is three services: postgres, backend, frontend. See the header of
+# docker-compose.yml for which service joins in which later phase.
+# ---------------------------------------------------------------------------
+
+# `--wait` is the point of this target: it blocks until every service with a
+# healthcheck reports healthy (or the timeout trips) and exits non-zero
+# otherwise. That makes `make up` a check, not just a launch — and it is the
+# same condition tests/phases/test_phase_0.py asserts. `next dev` compiles the
+# first route on demand, so the frontend's probe can legitimately take a minute.
+up: ## Start the local stack and block until every service is healthy
+	$(COMPOSE) up -d --wait --wait-timeout 300
+
+# No -v: the postgres_data volume survives, so a restart does not silently
+# discard the database. Throwing the data away is the explicit
+# `docker compose down -v`.
+down: ## Stop the local stack, keeping the Postgres volume
+	$(COMPOSE) down
+
+logs: ## Follow logs from every service in the local stack
+	$(COMPOSE) logs --follow
+
+ps: ## Show each service's container state and health
+	$(COMPOSE) ps
 
 help: ## List available targets
 	@echo "LearnTrail make targets:"
