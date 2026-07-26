@@ -68,6 +68,11 @@ Exit criterion (verbatim, docs/SPEC.md):
         `safety-judge`), verified live via the gateway's `/v1/models`.
         `safety-judge` has no caller until Phase 4 — the alias *contract* is what
         invariant #2 is about, not the caller.
+      - **Provider switched from Anthropic to OpenAI after this task landed, at
+        the user's request** — and the switch was one file. `infra/litellm/config.yaml`
+        plus two prose lines in docs/STATE.md; no application code, no schema, no
+        test, and the three alias names never changed. That is invariant #2
+        paying for itself, and it is the answer to "why not just call the SDK".
       - `PHASE_0_SERVICES` widened to four in the same commit, as this bullet
         required. Phase 0 still reports PASS.
       - **Healthcheck must be `/health/liveliness`, not `/health`.** `/health`

@@ -44,13 +44,21 @@ root pyproject.toml is part of the task that first puts code there.
 
 Two things `git log` cannot show, both still open:
 
-- **No `.env`.** `.env.example` is now committed (`e6616d6`), but the real `.env`
-  does not exist, so `ANTHROPIC_API_KEY` is unset and **no model call can
-  succeed**. The stack is still healthy — the gateway's `env_file` uses
-  `required: false` and its healthcheck probes liveliness, not providers — so
-  this surfaces only when something first calls a model. `cp .env.example .env`
-  and fill in a key. The agent cannot do this itself: its permission settings
-  deny both reads and writes under `.env*`.
+- **No `.env`, and `.env.example` still names the wrong variable.** The provider
+  moved to OpenAI, so the gateway reads `OPENAI_API_KEY` — but `.env.example`
+  (committed at `e6616d6`, before the switch) still says `ANTHROPIC_API_KEY`.
+  The agent cannot fix it: its permission settings deny both reads and writes
+  under `.env*`. Do this by hand:
+
+  ```
+  printf 'OPENAI_API_KEY=\nLITELLM_MASTER_KEY=sk-local-dev-change-me\n' > .env.example
+  cp .env.example .env    # then paste the real key into .env
+  ```
+
+  Until then **no model call can succeed**. The stack stays healthy regardless —
+  `env_file` uses `required: false` and the healthcheck probes liveliness, not
+  providers — so this surfaces only on the first real call, as a clear
+  `AuthenticationError` naming `OPENAI_API_KEY` (verified).
 - **gitleaks is still inert.** lefthook.yml skips it when the binary is missing,
   and the first credential path now exists, so this is overdue. Arming it means
   installing the binary first, then deleting the `if`/`else`/`fi` guard as
@@ -135,10 +143,11 @@ them (which also exercised `ON DELETE CASCADE` against real data).
   Both built images are development images running as uid 1000; production stages
   land when there is something to deploy. Driven by `make up` / `down` / `logs` / `ps`.
 - `infra/litellm/config.yaml` — the three aliases (`learning-fast` and
-  `safety-judge` → Haiku 4.5, `learning-deep` → Opus 5), each reading
-  `ANTHROPIC_API_KEY` from the environment. **The only place a provider is
-  named.** The backend holds no provider credential — verified inside the
-  container, not assumed.
+  `safety-judge` → `openai/gpt-4o-mini`, `learning-deep` → `openai/gpt-4o`), each
+  reading `OPENAI_API_KEY` from the environment. **The only place a provider is
+  named.** Verified live: `/v1/model/info` shows the mapping, and the backend
+  holds no provider credential (checked with `printenv` inside the container,
+  not assumed).
 - **No CI.** Hooks and `make fast` are the only enforcement, and both are bypassable
   with `--no-verify`. The FAST CI lane moved to Phase 1.
 

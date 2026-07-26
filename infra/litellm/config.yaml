@@ -1,68 +1,86 @@
 # LiteLLM Proxy — the single boundary between LearnTrail and any model provider.
 #
 # CLAUDE.md invariant #2: application code requests an ALIAS (`learning-fast`,
-# `learning-deep`, `safety-judge`) and never a provider/model string. That is
-# what makes this file the only place a provider decision lives — swapping
-# Anthropic for OpenAI, or a cloud model for a local one in Phase 11, is an edit
-# here and nowhere else.
+# `learning-deep`, `safety-judge`) and never a provider/model string. This file is
+# the proof that the invariant is worth having — switching the whole application
+# from Anthropic to OpenAI was an edit to this file and two lines of prose in
+# docs/STATE.md. No application code, no schema, no test changed.
 #
 # CLAUDE.md invariant #3: the credential is read from the environment on the
 # server side. It is never baked into this file, never returned by an endpoint,
 # and never reaches the frontend. `os.environ/NAME` is LiteLLM's indirection for
 # "read this at startup" — the literal string is what is committed.
 #
-# Phase 1 wires exactly ONE cloud provider. Fallbacks, routing strategies, cost
-# budgets and local models are later phases (10 and 11) — see invariant #6.
+# Phase 1 wires exactly ONE provider. Fallbacks, routing strategies, cost budgets
+# and local models are later phases (10 and 11) — see invariant #6.
+#
+# ---------------------------------------------------------------------------
+# CHANGING MODELS
+#
+# Each alias below names a model on one line. To move an alias to a different
+# model, edit that line. To move the whole application to a different provider,
+# edit the `model:` prefix and the `api_key:` variable, then set that variable in
+# .env — nothing outside this file and .env needs to know.
+#
+# The specific model IDs here are a starting point chosen for broad availability,
+# not a recommendation: if your account has a newer or cheaper tier, prefer it.
+# A wrong ID fails at the first real call (LiteLLM surfaces the provider's 404),
+# not at startup — the healthcheck deliberately does not ping providers.
+# ---------------------------------------------------------------------------
 
 model_list:
   # ---------------------------------------------------------------------------
   # learning-fast — the default for chat answers.
   #
-  # Haiku 4.5: cheapest and fastest current Claude model ($1/$5 per Mtok).
-  # 200K context, which is ample for a single conversation's working context
-  # (docs/ARCHITECTURE.md §6) — the whole point of `build_context` is that the
-  # full history is not sent.
+  # The cheap, quick tier. This alias is on the hot path: every question in every
+  # conversation goes through it, so its cost and latency are the ones the user
+  # actually feels.
   # ---------------------------------------------------------------------------
   - model_name: learning-fast
     litellm_params:
-      model: anthropic/claude-haiku-4-5
-      api_key: os.environ/ANTHROPIC_API_KEY
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
 
   # ---------------------------------------------------------------------------
   # learning-deep — reserved for work that must be right rather than quick:
-  # structured summary generation (Phase 3) and anything a Learning is derived
-  # from. Not used by the Phase 1 chat path.
-  #
-  # Opus 5 ($5/$25 per Mtok, 1M context). Thinking is on by default on this
-  # model, so a `max_tokens` sized for the answer alone will truncate — the
-  # ceiling below covers thinking plus response.
+  # structured summary generation (Phase 3) and anything an approved Learning is
+  # derived from. Not used by the Phase 1 chat path.
   # ---------------------------------------------------------------------------
   - model_name: learning-deep
     litellm_params:
-      model: anthropic/claude-opus-5
-      api_key: os.environ/ANTHROPIC_API_KEY
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+      # A ceiling, not a target. Left here so a runaway generation fails visibly
+      # instead of quietly costing money. Note LiteLLM translates `max_tokens`
+      # to whatever the target model expects, so this stays correct if the model
+      # above is swapped for a reasoning-tier one that wants
+      # `max_completion_tokens`.
       max_tokens: 16000
 
   # ---------------------------------------------------------------------------
-  # safety-judge — the LLM-as-judge alias for the Phase 4 safety pipeline and
-  # the Phase 6 evaluation suite. Declared now because the alias *contract* is
-  # what invariant #2 is about; nothing calls it until Phase 4.
+  # safety-judge — the LLM-as-judge alias for the Phase 4 safety pipeline and the
+  # Phase 6 evaluation suite. Declared now because the alias *contract* is what
+  # invariant #2 is about; nothing calls it until Phase 4.
   #
-  # Deliberately a cheap model: a judge runs on every request in the phases that
-  # use it, so its cost multiplies. Judging is a classification task, which is
-  # what Haiku is for.
+  # Deliberately the cheap tier: a judge runs on every request in the phases that
+  # use it, so its cost multiplies by traffic. Judging is a classification task.
   # ---------------------------------------------------------------------------
   - model_name: safety-judge
     litellm_params:
-      model: anthropic/claude-haiku-4-5
-      api_key: os.environ/ANTHROPIC_API_KEY
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
 
 litellm_settings:
-  # Reject a request that names a parameter the target provider does not accept,
-  # rather than silently discarding it. `drop_params: true` is the common
-  # default and it hides real bugs — a `temperature` silently dropped on a model
-  # that rejects it looks like the setting had no effect. Invariant #4's spirit
+  # Reject a request naming a parameter the target provider does not accept,
+  # rather than silently discarding it. `drop_params: true` is the common default
+  # and it hides real bugs — a `temperature` silently dropped on a model that
+  # rejects it looks like the setting simply had no effect. Invariant #4's spirit
   # is that bad input fails loudly.
+  #
+  # Worth knowing when swapping in a reasoning-tier model: those reject
+  # `temperature` outright. With this set to `false` that surfaces as an error
+  # instead of a silent no-op — which is the intent, but it means the failure is
+  # yours to fix rather than LiteLLM's to paper over.
   drop_params: false
   # Never log prompt or completion bodies. Conversations are the user's learning
   # material, and Phase 5 is where observability is designed deliberately.
