@@ -27,6 +27,8 @@ current phase or progress.
 ## Where things live
 
 - [docs/STATE.md](docs/STATE.md) — current phase, last/next task, in-flight work
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — layers, request path, data model,
+  dependency direction, and which phase introduces each component
 - [plans/](plans/) — one file per phase: tasks, exit criterion, what's deferred
 - [docs/decisions/](docs/decisions/) — ADRs for non-obvious decisions
 - [tests/phases/](tests/phases/) — executable exit criteria, one per phase
