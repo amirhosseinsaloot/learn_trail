@@ -1,40 +1,59 @@
 # State
 
-Current phase: **Phase 0 is COMPLETE. Phase 1 — Basic AI chat is next** (see
-[plans/phase-1.md](../plans/phase-1.md)); nothing in Phase 1 has been started.
+Current phase: **Phase 1 — Basic AI chat, IN PROGRESS.** Phase 0 is complete.
+See [plans/phase-1.md](../plans/phase-1.md).
 
-`make status` reports **Phase 0 PASS** — the first phase to go green. Phases 1–12
-are red, as designed.
+`make status` reports **Phase 0 PASS**, phases 1–12 FAIL. Phase 1's red is
+correct: its exit criterion (stop the app, restart, continue a conversation) is
+not met, because there is no chat endpoint yet.
 
-Last completed task: Phase 0 task 9 — the real `tests/phases/test_phase_0.py`
-(commit `872bcb5`). Earlier: task 1 (SPEC §16 layout) `1de4a59`, task 2 (uv env)
-`1a603eb`, task 3 (FastAPI skeleton + Ruff + mypy) `0c56b7f`, task 4 (Alembic env)
-`2b0e933`, task 5 (pytest discovery) `06b9736`, task 6 (Next.js skeleton) `6132a66`,
-task 7 (lefthook + make targets) `600d919`, task 8 (docker-compose) `e7bed57`.
+Phase 1 progress — **2 of 6 tasks landed**:
 
-Next task: the first Phase 1 task in [plans/phase-1.md](../plans/phase-1.md). Read
-the notes carried onto its LiteLLM-in-compose and chat-page tasks before starting
-either — they record what Phase 0 deliberately left undone for Phase 1 to do
-(`.env` and gitleaks arriving with the first real credential, the
-`frontend`→`backend` dependency, and the fact that adding a compose service
-**requires** widening `PHASE_0_SERVICES` in `tests/phases/test_phase_0.py` in the
-same commit or Phase 0 flips to FAIL).
+- [x] `chat` + `message` tables + first Alembic revision + async session — `421feb8`
+- [x] LiteLLM gateway service + the three aliases — `e9a9118`
+- [ ] Chat endpoints (create / send / resume / rename / soft-delete)
+- [ ] LiteLLM call wrapped in Pydantic models (`packages/ai_core`, not yet a member)
+- [ ] SSE streaming endpoint
+- [ ] Chat page in `apps/web`
+- [ ] Replace the `tests/phases/test_phase_1.py` placeholder
 
-Phase 0 exit criterion, verified by running it: `make up` brings postgres, backend
-and frontend to `healthy`; `alembic upgrade head` runs from inside the backend
-container; host ports 5432, 8000 and 3000 all answer.
+Phase 0 tasks, for reference: task 1 `1de4a59`, 2 `1a603eb`, 3 `0c56b7f`,
+4 `2b0e933`, 5 `06b9736`, 6 `6132a66`, 7 `600d919`, 8 `e7bed57`, 9 `872bcb5`.
+Phase 0's exit criterion was verified by running it, and still passes with four
+services.
+
+**Phase 2 was requested and is blocked on Phase 1.** Phase 2's own task list says
+"replace the Phase 1 direct call with a call into the graph from the chat
+endpoint", and SPEC §15 words it the same way — it is a refactor of Phase 1's
+code. There is no chat endpoint to convert, nothing for `persist` to write
+through, and nothing for the checkpointer to key on. Phase 1's four remaining
+tasks are the prerequisite, not a detour.
+
+Next task: the chat endpoints. `packages/ai_core` is still `.gitkeep`-only and is
+**not** a uv workspace member — adding it to `[tool.uv.workspace] members` in the
+root pyproject.toml is part of the task that first puts code there.
 
 ## In-flight / half-done
 
-Nothing in-flight. This section exists for work `git log`/`git status` can't show on
-their own — unapplied migrations, endpoints stubbed to return 501, flaky tests, a
-half-renamed function.
+Two things `git log` cannot show, both still open:
 
-One thing worth knowing that git cannot show: the Docker **images are built and the
-stack may still be running** on this machine. `make ps` says which. `make down`
-stops it and keeps the `postgres_data` volume; `docker compose down -v` is the
-explicit throw-the-data-away gesture. The database has zero tables — Alembic has
-zero revisions until Phase 1.
+- **No `.env`, and no `.env.example` in the repo.** The gateway starts without a
+  credential by design (`env_file` uses `required: false`), so the stack is
+  healthy — but no model call can succeed until a key exists. Create `.env` at
+  the repo root with `ANTHROPIC_API_KEY=<key>` and
+  `LITELLM_MASTER_KEY=<any string>`. `.env.example` is absent because the
+  agent's permission settings deny writes to `.env*`; `.gitignore` already
+  carries the `!.env.example` negation for whenever someone adds it.
+- **gitleaks is still inert.** lefthook.yml skips it when the binary is missing,
+  and the first real credential has now arrived — so this is overdue. Arming it
+  means installing the binary first, then deleting the `if`/`else`/`fi` guard as
+  lefthook.yml's own comment instructs. Arming it before installing would
+  hard-fail every commit.
+
+Also worth knowing: the Docker **images are built and the stack may still be
+running** on this machine (`make ps`). `make down` keeps the `postgres_data`
+volume; `docker compose down -v` throws the data away. The database is migrated
+to `head` — one revision, `chat` and `message`, zero rows.
 
 ## What exists right now
 
@@ -46,8 +65,12 @@ zero revisions until Phase 1.
   (`safety-engineer`, `observability-engineer`, `eval-engineer`, `red-team`,
   `retrieval-engineer`, `prompt-optimizer`) do not exist yet — add each when its phase
   starts.
-- `tests/phases/test_phase_0.py` — **real**, and green. `test_phase_1.py` …
-  `test_phase_12.py` are still intentionally failing placeholders.
+- `tests/phases/test_phase_0.py` — **real**, and green; it now covers four
+  services. `test_phase_1.py` … `test_phase_12.py` are still intentionally
+  failing placeholders.
+- `docs/ARCHITECTURE.md` — the one-page structural view (layers, request path,
+  approval gate, data model, dependency direction), with the phase that
+  introduces each component.
 - `plans/phase-0.md` … `phase-12.md` — task breakdown per phase.
 - `docs/decisions/` — ADR template + 0001 (why exit criteria are executable).
 - The SPEC §16 directory tree (`apps/`, `packages/`, `tests/`, `prompts/`, `infra/`).
@@ -63,10 +86,13 @@ zero revisions until Phase 1.
 - `apps/api/` — `learntrail-api`, a hatchling distribution exposing top-level `api`.
   `api.main:app` is a FastAPI app object with **no routes**; only FastAPI's built-in
   `/openapi.json`, `/docs`, `/redoc` exist. Runtime deps: fastapi, pydantic, uvicorn.
-- `packages/database/` — `learntrail-database`, exposing top-level `database`. Empty
-  `Base` (zero tables) with a constraint naming convention, `database_url()` reading
-  `DATABASE_URL`, and a runnable Alembic env at `packages/database/alembic.ini` with
-  **zero revisions**. Driver: psycopg 3. Deps: alembic, psycopg[binary], sqlalchemy.
+- `packages/database/` — `learntrail-database`, exposing top-level `database`.
+  `Base` + a constraint naming convention, `database_url()` reading
+  `DATABASE_URL`, an async engine and session factory in `database/session.py`,
+  and `database/models/conversation.py` with `Chat` and `Message`. **One** Alembic
+  revision (`6ab72a617d4e`, `chat` + `message`), verified to rebuild from an empty
+  database with no drift. Driver: psycopg 3. Deps: alembic, psycopg[binary],
+  sqlalchemy[asyncio].
 - One root `pytest.ini` discovering `tests/`, `apps/` and `packages/` under
   `--import-mode=importlib`. `pytest` from the root: **12 failed, 10 passed** — the 12
   remaining phase placeholders are red on purpose; the 8 unit tests in
@@ -89,12 +115,18 @@ zero revisions until Phase 1.
   gitleaks is wired but inert until Phase 1. `make help` lists every target;
   `make fast` runs the whole Phase 0 check set.
 - `docker-compose.yml` + `.dockerignore` + `infra/docker/{backend,frontend}.Dockerfile`
-  — **exactly three services**, each with a real healthcheck: `postgres` (18-alpine,
+  — **four services**, each with a real healthcheck: `postgres` (18-alpine,
   5432 published, named `postgres_data` volume), `backend` (uvicorn `--reload` on
   bind-mounted source, venv at `/opt/venv` outside `/app`, 8000 published), `frontend`
-  (`next dev`, anonymous volumes over `node_modules` and `.next`, 3000 published).
-  Both images are development images running as uid 1000; production stages land when
-  there is something to deploy. Driven by `make up` / `down` / `logs` / `ps`.
+  (`next dev`, anonymous volumes over `node_modules` and `.next`, 3000 published),
+  and `litellm` (**no host port** — in-network only at `http://litellm:4000`).
+  Both built images are development images running as uid 1000; production stages
+  land when there is something to deploy. Driven by `make up` / `down` / `logs` / `ps`.
+- `infra/litellm/config.yaml` — the three aliases (`learning-fast` and
+  `safety-judge` → Haiku 4.5, `learning-deep` → Opus 5), each reading
+  `ANTHROPIC_API_KEY` from the environment. **The only place a provider is
+  named.** The backend holds no provider credential — verified inside the
+  container, not assumed.
 - **No CI.** Hooks and `make fast` are the only enforcement, and both are bypassable
   with `--no-verify`. The FAST CI lane moved to Phase 1.
 

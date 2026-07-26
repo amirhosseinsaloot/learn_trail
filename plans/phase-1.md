@@ -1,6 +1,7 @@
 # Phase 1 — Basic AI chat
 
-Status: Not started
+Status: IN PROGRESS — 2 of 6 tasks landed (tables + gateway). Phase test is still
+a placeholder, so `make status` reports Phase 1 FAIL, correctly.
 
 ## Exit criterion
 
@@ -15,29 +16,51 @@ Exit criterion (verbatim, docs/SPEC.md):
 ## Tasks
 
 - [ ] Create-chat, send-message, resume-conversation, rename-chat, soft-delete-chat endpoints (owner: `backend-api`) — commit: `____`
-- [ ] chat and message tables + Alembic migration (no user_id column) (owner: `backend-api`) — commit: `____`
-      - Phase 0 set a constraint naming convention on the empty `Base`, and its
-        `ck` template interpolates `%(constraint_name)s`: every `CheckConstraint`
-        must be given an explicit `name=`, or DDL compilation raises a confusing
-        `InvalidRequestError`.
-      - Switch `packages/database` to `sqlalchemy[asyncio]` when the async
-        request-path session lands — `create_async_engine` needs greenlet, which
-        today arrives only via SQLAlchemy's platform markers.
-- [ ] Add the LiteLLM Proxy service to docker-compose.yml (it joins in this phase, not Phase 0 — a service enters compose in the phase that introduces its concept) and configure it with one cloud model alias (learning-fast or equivalent) (owner: `infra-devops`) — commit: `____`
-      - **This task must also widen `PHASE_0_SERVICES` in
-        `tests/phases/test_phase_0.py`, in the same commit.** That test asserts the
-        compose service list by set *equality* (deliberately — it is how invariant #6
-        is enforced mechanically), so adding a fourth service flips Phase 0 to FAIL
-        until the constant names it. Give LiteLLM a healthcheck at the same time:
-        the same test requires every service to declare one.
-      - Phase 0's compose has **no `.env` and no secret** — the Postgres password is
-        the throwaway literal `learntrail`, inline. LiteLLM is the first service
-        needing a real provider credential (invariant #3: server-side only, never
-        reaching the frontend), so this is where `.env` + `env_file:` arrive, and
-        where gitleaks stops being inert. `.dockerignore` already excludes `.env`
-        and `.env.*` so an image cannot absorb one.
-      - The backend gets `depends_on: litellm` only if it calls the proxy at
-        startup; a request-path-only dependency does not need it.
+- [x] chat and message tables + Alembic migration (no user_id column) (owner: `backend-api`) — commit: `421feb8`
+      - Both forward-carried notes were hit and handled: `CheckConstraint`s all
+        carry an explicit `name=`, and `packages/database` now depends on
+        `sqlalchemy[asyncio]` with the async engine in `database/session.py`.
+      - **Enum columns must use `Enum(native_enum=False, create_constraint=True,
+        values_callable=...)`, not `String`.** With a plain `String` a fresh DB
+        load returns `str`, not the enum — equality still works because StrEnum
+        compares equal to `str`, so it passes every obvious test while mypy
+        allows enum-only access that crashes at runtime. Each of those three
+        arguments is non-default and load-bearing; without `values_callable` the
+        database stores `'USER'` while every literal in the codebase says
+        `'user'`, and without `create_constraint` SQLAlchemy 2.0 emits no CHECK.
+      - `expire_on_commit=False` on the session factory is not style: the default
+        refreshes on attribute access after commit, which on an async session
+        raises `MissingGreenlet` mid-response.
+      - `message.model_run_id` (docs/SPEC.md §17) is deliberately absent — it
+        joins in the same migration that creates `model_run` (Phase 5).
+- [x] Add the LiteLLM Proxy service to docker-compose.yml (it joins in this phase, not Phase 0 — a service enters compose in the phase that introduces its concept) and configure it with one cloud model alias (learning-fast or equivalent) (owner: `infra-devops`) — commit: `e9a9118`
+      - All three aliases are declared (`learning-fast`, `learning-deep`,
+        `safety-judge`), verified live via the gateway's `/v1/models`.
+        `safety-judge` has no caller until Phase 4 — the alias *contract* is what
+        invariant #2 is about, not the caller.
+      - `PHASE_0_SERVICES` widened to four in the same commit, as this bullet
+        required. Phase 0 still reports PASS.
+      - **Healthcheck must be `/health/liveliness`, not `/health`.** `/health`
+        actively pings every configured provider, so it fails without a real key
+        — making the whole stack un-startable until a credential exists — and
+        spends money on every probe.
+      - **`env_file` must use `- path: .env` + `required: false`.** Without it
+        compose refuses to start *any* service when `.env` is absent, so a clean
+        clone could not run even the Phase 0 stack.
+      - No host port published for `litellm`: the backend is the only intended
+        caller, and an endpoint that spends money does not belong on the host
+        network. The backend reaches it at `http://litellm:4000` via
+        `LITELLM_BASE_URL`, and holds **no** provider credential (verified with
+        `printenv` inside the container).
+      - **STILL OPEN — `.env.example` is not committed.** The agent's own
+        permission settings deny writes to `.env*`, so it could not be created.
+        Its intended contents are recorded in docs/STATE.md; `.gitignore`
+        already has the `!.env.example` negation waiting for it.
+      - **STILL OPEN — gitleaks is not armed.** lefthook.yml's guard still skips
+        when the binary is missing, and installing a Go binary is an environment
+        step, not a repo change. Arming it (deleting the `if`/`else`/`fi` per
+        lefthook.yml's own instructions) requires installing gitleaks first;
+        doing it before that would hard-fail every commit.
 - [ ] Direct LiteLLM call wrapped in Pydantic request/response models (pre-LangGraph) (owner: `ai-orchestration`) — commit: `____`
 - [ ] SSE streaming endpoint for answers (owner: `backend-api`) — commit: `____`
 - [ ] Chat page: send question, render streamed answer, list/resume chats (owner: `frontend-web`) — commit: `____`
