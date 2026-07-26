@@ -19,14 +19,16 @@ from api.main import app
 # The Phase 1 chat surface (docs/SPEC.md §6), path -> the verbs it answers.
 # Asserted exactly, including the methods: an accidentally-added verb on an
 # existing path is exactly the kind of thing a path-only comparison misses.
-#
-# Answer streaming is deliberately absent — docs/SPEC.md §6 lists it as a
-# separate endpoint, and this mapping is what tells us when it lands.
+# Adding an endpoint is meant to fail this test — that is how a surface change
+# stays a decision rather than a side effect.
 CHAT_OPERATIONS = {
     "/chats": ["get", "post"],
     "/chats/{chat_id}": ["delete", "get", "patch"],
     "/chats/{chat_id}/restore": ["post"],
     "/chats/{chat_id}/messages": ["post"],
+    # Sending a message and streaming the answer are separate endpoints, as
+    # docs/SPEC.md §6 lists them.
+    "/chats/{chat_id}/answer": ["post"],
 }
 
 

@@ -18,7 +18,9 @@ everything.
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
+from typing import Any
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -308,3 +310,242 @@ async def test_no_response_body_mentions_a_user(client: AsyncClient) -> None:
     forbidden = {"user_id", "userId", "owner", "owner_id", "author_id", "account_id"}
     assert not (forbidden & set(detail))
     assert all(not (forbidden & set(message)) for message in detail["messages"])
+
+
+# --- streaming an answer -------------------------------------------------------
+#
+# The gateway is stubbed rather than called. These tests are about the endpoint's
+# contract — what it validates, what it persists, what it emits — and a real model
+# would make them slow, non-deterministic and paid. The live model path is covered
+# by the `slow`-marked test in packages/ai_core.
+
+
+def _stub_stream(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    parts: list[str],
+    finish_reason: str = "stop",
+    error: Exception | None = None,
+) -> None:
+    """Replace the gateway stream with a scripted one."""
+    from ai_core import CompletionResponse, FinalChunk, ModelAlias, TokenChunk
+    from api.routers import chats as chats_module
+
+    async def fake_stream(request: object) -> AsyncIterator[object]:
+        for part in parts:
+            yield TokenChunk(text=part)
+        if error is not None:
+            raise error
+        yield FinalChunk(
+            response=CompletionResponse(
+                alias=ModelAlias.LEARNING_FAST,
+                provider_model="stub-model",
+                text="".join(parts),
+                input_tokens=7,
+                output_tokens=len(parts),
+                finish_reason=finish_reason,
+            )
+        )
+
+    monkeypatch.setattr(chats_module, "stream", fake_stream)
+
+
+def _parse_sse(body: str) -> list[tuple[str, dict[str, object]]]:
+    """Parse a raw SSE body into (event name, payload) pairs."""
+    events: list[tuple[str, dict[str, object]]] = []
+    name = ""
+    for line in body.splitlines():
+        if line.startswith("event: "):
+            name = line.removeprefix("event: ")
+        elif line.startswith("data: "):
+            events.append((name, json.loads(line.removeprefix("data: "))))
+    return events
+
+
+async def _ask(client: AsyncClient, chat_id: str, question: str = "why?") -> None:
+    response = await client.post(f"/chats/{chat_id}/messages", json={"content": question})
+    assert response.status_code == 201, response.text
+
+
+async def test_streams_tokens_then_persists_the_answer(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stub_stream(monkeypatch, parts=["Because ", "it ", "streams."])
+    chat = await _new_chat(client)
+    await _ask(client, str(chat["id"]))
+
+    response = await client.post(f"/chats/{chat['id']}/answer")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+
+    events = _parse_sse(response.text)
+    assert [name for name, _ in events] == ["token", "token", "token", "done"]
+
+    # The answer is persisted as a real assistant turn, positioned after the
+    # question — this is what makes it survive a restart.
+    detail = (await client.get(f"/chats/{chat['id']}")).json()
+    assert [(m["role"], m["sequence_number"]) for m in detail["messages"]] == [
+        ("user", 0),
+        ("assistant", 1),
+    ]
+    assert detail["messages"][1]["content"] == "Because it streams."
+
+
+async def test_the_done_event_carries_what_phase_5_will_record(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stub_stream(monkeypatch, parts=["ok"])
+    chat = await _new_chat(client)
+    await _ask(client, str(chat["id"]))
+
+    done = dict(_parse_sse((await client.post(f"/chats/{chat['id']}/answer")).text)[-1][1])
+
+    # Both the alias (the application's vocabulary) and the model that actually
+    # served it: the mapping between them changes over time, so neither alone
+    # identifies the run.
+    assert done["alias"] == "learning-fast"
+    assert done["provider_model"] == "stub-model"
+    assert done["input_tokens"] == 7
+    assert done["truncated"] is False
+
+
+async def test_a_truncated_answer_is_flagged_not_hidden(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`length` means the model hit the ceiling mid-sentence.
+
+    It is still persisted — the user watched it arrive — but the client is told,
+    because from Phase 3 these transcripts become approved Learnings and a
+    silently-truncated one is corrupted knowledge.
+    """
+    _stub_stream(monkeypatch, parts=["cut off here"], finish_reason="length")
+    chat = await _new_chat(client)
+    await _ask(client, str(chat["id"]))
+
+    done = dict(_parse_sse((await client.post(f"/chats/{chat['id']}/answer")).text)[-1][1])
+    assert done["truncated"] is True
+
+
+async def test_a_gateway_failure_mid_stream_persists_nothing(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The failure mode that matters most.
+
+    Persistence hangs off the final chunk, which only arrives when the model
+    finished. A stream that dies partway leaves the chat exactly as it was: a
+    missing answer is recoverable by asking again, a half-answer recorded as
+    complete is not.
+    """
+    from ai_core import GatewayError
+
+    _stub_stream(monkeypatch, parts=["half an ans"], error=GatewayError("provider exploded"))
+    chat = await _new_chat(client)
+    await _ask(client, str(chat["id"]))
+
+    events = _parse_sse((await client.post(f"/chats/{chat['id']}/answer")).text)
+    names = [name for name, _ in events]
+    assert names[-1] == "error"
+    assert "done" not in names
+
+    detail = (await client.get(f"/chats/{chat['id']}")).json()
+    assert [m["role"] for m in detail["messages"]] == ["user"]
+
+
+async def test_an_empty_answer_is_reported_and_not_persisted(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stub_stream(monkeypatch, parts=["   "])
+    chat = await _new_chat(client)
+    await _ask(client, str(chat["id"]))
+
+    events = _parse_sse((await client.post(f"/chats/{chat['id']}/answer")).text)
+    assert events[-1][0] == "error"
+    detail = (await client.get(f"/chats/{chat['id']}")).json()
+    assert [m["role"] for m in detail["messages"]] == ["user"]
+
+
+async def test_refuses_to_answer_an_empty_chat(client: AsyncClient) -> None:
+    chat = await _new_chat(client)
+    response = await client.post(f"/chats/{chat['id']}/answer")
+    assert response.status_code == 409
+    assert "no messages" in response.json()["detail"]
+
+
+async def test_refuses_to_answer_its_own_answer(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Otherwise the model replies to itself, and a stuck client can run up a
+    bill one keystroke at a time."""
+    _stub_stream(monkeypatch, parts=["an answer"])
+    chat = await _new_chat(client)
+    await _ask(client, str(chat["id"]))
+    await client.post(f"/chats/{chat['id']}/answer")
+
+    again = await client.post(f"/chats/{chat['id']}/answer")
+    assert again.status_code == 409
+    assert "not a question" in again.json()["detail"]
+
+
+async def test_refuses_to_answer_a_deleted_chat(client: AsyncClient) -> None:
+    chat = await _new_chat(client)
+    await _ask(client, str(chat["id"]))
+    await client.delete(f"/chats/{chat['id']}")
+
+    response = await client.post(f"/chats/{chat['id']}/answer")
+    assert response.status_code == 409
+
+
+async def test_validation_errors_arrive_as_status_codes_not_sse_events(
+    client: AsyncClient,
+) -> None:
+    """Once a stream is open the status line is already sent, so a 404 can no
+    longer be expressed. Everything checkable is therefore checked before the
+    response begins — this asserts that ordering."""
+    response = await client.post("/chats/11111111-2222-3333-4444-555555555555/answer")
+    assert response.status_code == 404
+    assert not response.headers["content-type"].startswith("text/event-stream")
+
+
+async def test_the_whole_transcript_is_sent_as_context(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Phase 1's working-context strategy is "full history" (docs/SPEC.md §14).
+
+    Asserted because it is a *choice*, not an accident: Phase 2 replaces it with
+    a `build_context` node, and this test is what will notice.
+    """
+    from api.routers import chats as chats_module
+
+    seen: list[object] = []
+
+    async def capture(request: Any) -> AsyncIterator[object]:
+        seen.append(request)
+        from ai_core import CompletionResponse, FinalChunk, ModelAlias
+
+        yield FinalChunk(
+            response=CompletionResponse(
+                alias=ModelAlias.LEARNING_FAST,
+                provider_model="stub",
+                text="ok",
+                input_tokens=1,
+                output_tokens=1,
+                finish_reason="stop",
+            )
+        )
+
+    monkeypatch.setattr(chats_module, "stream", capture)
+
+    chat = await _new_chat(client)
+    await _ask(client, str(chat["id"]), "first question")
+    await client.post(f"/chats/{chat['id']}/answer")
+    await _ask(client, str(chat["id"]), "second question")
+    await client.post(f"/chats/{chat['id']}/answer")
+
+    last_request = seen[-1]
+    assert [turn.content for turn in last_request.messages] == [  # type: ignore[attr-defined]
+        "first question",
+        "ok",
+        "second question",
+    ]
+    # The alias, not a model string — CLAUDE.md invariant #2 at the call site.
+    assert last_request.alias.value == "learning-fast"  # type: ignore[attr-defined]

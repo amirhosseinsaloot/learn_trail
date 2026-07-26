@@ -1,12 +1,12 @@
 """Chat and message endpoints (docs/SPEC.md §6).
 
-Covers the persistence half of Phase 1: create a chat, list chats, resume one,
-rename it, soft-delete and restore it, and append a user turn. **Answer
-generation is deliberately not here** — docs/SPEC.md §6 lists "sending messages"
-and "streaming answers" as separate endpoints, and the model call arrives with
-the SSE endpoint later in Phase 1. That split is what makes this module
-testable without a model, and it is why appending a message returns the
-persisted user turn rather than an answer.
+The whole Phase 1 chat surface: create a chat, list chats, resume one, rename it,
+soft-delete and restore it, append a user turn, and stream an answer.
+
+Appending a message and answering are separate endpoints, as docs/SPEC.md §6
+lists them. That is not ceremony: it keeps every persistence path testable with
+no model and no API key, and it means a failed model call cannot lose a question
+the user already asked.
 
 No authentication and no ownership checks anywhere: there is exactly one user
 and no `user` table (CLAUDE.md invariant #1). A chat id is therefore a
@@ -16,13 +16,24 @@ capability, which is also why ids are UUIDs rather than sequential integers.
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload
 
+from ai_core import (
+    ChatTurn,
+    CompletionRequest,
+    GatewayError,
+    ModelAlias,
+    TokenChunk,
+    stream,
+)
+from api import sse
 from api.schemas import (
     ChatCreate,
     ChatDetail,
@@ -229,3 +240,110 @@ async def append_message(chat_id: uuid.UUID, body: MessageCreate, db: Session) -
 
     await db.commit()
     return MessageRead.model_validate(message)
+
+
+def _working_context(chat: Chat) -> list[ChatTurn]:
+    """Assemble what the model actually sees for this request.
+
+    The *working context* of docs/ARCHITECTURE.md §6 — deliberately a different
+    thing from the transcript. Phase 1 uses the simplest strategy docs/SPEC.md
+    §14 lists, full history, which is correct for short chats and will stop being
+    correct: the alternatives (recent-window, previous-summary-plus-recent,
+    relevance-selected) are exactly what `build_context` becomes as a graph node
+    in Phase 2.
+
+    Isolated in one function now so that change is local. Note it maps rows onto
+    `ChatTurn` rather than passing them through: `ai_core` never sees a database
+    model, which is what keeps the working context an assembled thing rather than
+    "the transcript, but passed along".
+    """
+    return [ChatTurn(role=message.role.value, content=message.content) for message in chat.messages]
+
+
+@router.post("/{chat_id}/answer")
+async def stream_answer(chat_id: uuid.UUID, db: Session) -> StreamingResponse:
+    """Stream the assistant's answer to the conversation so far, then persist it.
+
+    The answer half of "send a message" — docs/SPEC.md §6 lists streaming answers
+    as its own endpoint, and this is it. `POST /chats/{id}/messages` appends the
+    question; this produces the reply.
+
+    Validation happens *before* the response begins. Once a stream is open the
+    status line is already sent, so a 404 or 409 is no longer expressible — the
+    error would have to arrive as an SSE `error` event that a client is free to
+    ignore. Everything that can be checked up front therefore is.
+
+    Consume it with `fetch` + a ReadableStream, not `EventSource`: EventSource
+    only issues GET requests, and this endpoint is a POST because it creates a
+    message.
+    """
+    chat = await _load_chat(db, chat_id)
+    if chat.status is ChatStatus.DELETED:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, f"chat {chat_id} is deleted; restore it before answering"
+        )
+    if not chat.messages:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"chat {chat_id} has no messages to answer")
+    if chat.messages[-1].role is not MessageRole.USER:
+        # Answering an assistant turn would produce the model replying to itself.
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "the last message is not a question; append a user message first",
+        )
+
+    context = _working_context(chat)
+    next_position = await _next_sequence_number(db, chat.id)
+
+    async def events() -> AsyncIterator[str]:
+        request = CompletionRequest(alias=ModelAlias.LEARNING_FAST, messages=context)
+        try:
+            async for chunk in stream(request):
+                if isinstance(chunk, TokenChunk):
+                    yield sse.event("token", chunk)
+                    continue
+
+                # A FinalChunk is the only signal that the model finished rather
+                # than the connection dying, so persistence hangs off it and
+                # nothing else. A stream that ends without one leaves the chat
+                # exactly as it was — better a missing answer than a truncated one
+                # recorded as complete, since from Phase 3 these become Learnings.
+                answer = chunk.response
+                if answer.is_empty:
+                    yield sse.event("error", {"detail": "the model returned an empty answer"})
+                    return
+
+                message = Message(
+                    chat_id=chat.id,
+                    role=MessageRole.ASSISTANT,
+                    content=answer.text,
+                    sequence_number=next_position,
+                )
+                db.add(message)
+                await db.execute(
+                    update(Chat).where(Chat.id == chat.id).values(updated_at=func.clock_timestamp())
+                )
+                await db.commit()
+
+                yield sse.event(
+                    "done",
+                    {
+                        "message_id": str(message.id),
+                        "sequence_number": message.sequence_number,
+                        # Surfaced rather than hidden: a truncated answer is not a
+                        # complete one, and the client should be able to say so.
+                        "truncated": answer.was_truncated,
+                        # The alias is the app's vocabulary; provider_model is what
+                        # actually served it. Phase 5 persists both in `model_run`.
+                        "alias": answer.alias.value,
+                        "provider_model": answer.provider_model,
+                        "input_tokens": answer.input_tokens,
+                        "output_tokens": answer.output_tokens,
+                    },
+                )
+        except GatewayError as exc:
+            # The stream is already open, so this cannot be a 502. An `error`
+            # event is the only way left to tell the client, and it is why the
+            # client must treat "stream ended without `done`" as a failure.
+            yield sse.event("error", {"detail": str(exc)})
+
+    return StreamingResponse(events(), media_type=sse.SSE_MEDIA_TYPE, headers=sse.SSE_HEADERS)

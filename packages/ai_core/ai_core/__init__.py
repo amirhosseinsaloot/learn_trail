@@ -16,15 +16,26 @@ There is no `prompts/` package here on purpose: prompt text is lifecycle-managed
 """
 
 from ai_core.models.aliases import ModelAlias
-from ai_core.models.gateway import GatewayError, answer, complete
-from ai_core.schemas.completion import ChatTurn, CompletionRequest, CompletionResponse
+from ai_core.models.gateway import GatewayError, answer, complete, stream
+from ai_core.schemas.completion import (
+    ChatTurn,
+    CompletionChunk,
+    CompletionRequest,
+    CompletionResponse,
+    FinalChunk,
+    TokenChunk,
+)
 
 __all__ = [
     "ChatTurn",
+    "CompletionChunk",
     "CompletionRequest",
     "CompletionResponse",
+    "FinalChunk",
     "GatewayError",
     "ModelAlias",
+    "TokenChunk",
     "answer",
     "complete",
+    "stream",
 ]

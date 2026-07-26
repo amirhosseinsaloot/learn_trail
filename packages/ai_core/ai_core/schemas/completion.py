@@ -83,6 +83,16 @@ class CompletionResponse(BaseModel):
     finish_reason: str
 
     @property
+    def is_empty(self) -> bool:
+        """True when the model returned no text at all.
+
+        Distinct from truncation: this is a model that said nothing, which is a
+        legitimate provider outcome but never something worth persisting as an
+        assistant turn.
+        """
+        return not self.text.strip()
+
+    @property
     def was_truncated(self) -> bool:
         """True when the model hit the token ceiling rather than finishing.
 
@@ -90,6 +100,38 @@ class CompletionResponse(BaseModel):
         becomes an approved Learning is a silently corrupted one.
         """
         return self.finish_reason == "length"
+
+    @classmethod
+    def from_streamed(
+        cls,
+        alias: ModelAlias,
+        *,
+        provider_model: str,
+        text: str,
+        finish_reason: str,
+        usage: Any,
+    ) -> Self:
+        """Assemble the same validated response from a finished stream.
+
+        A streamed call never produces one payload to parse: the text arrives in
+        deltas and usage arrives in a final chunk. Reconstructing the *same*
+        schema here means the streaming and non-streaming paths converge before
+        anything is persisted — a streamed answer is not a second, laxer kind of
+        answer.
+        """
+        if usage is None:
+            raise ValueError(
+                f"{alias}: stream ended with no usage block — "
+                "the request needs stream_options={'include_usage': True}"
+            )
+        return cls(
+            alias=alias,
+            provider_model=provider_model,
+            text=text,
+            input_tokens=usage.prompt_tokens,
+            output_tokens=usage.completion_tokens,
+            finish_reason=finish_reason,
+        )
 
     @classmethod
     def from_provider(cls, alias: ModelAlias, payload: Any) -> Self:
@@ -118,3 +160,33 @@ class CompletionResponse(BaseModel):
             output_tokens=usage.completion_tokens,
             finish_reason=choice.finish_reason,
         )
+
+
+class TokenChunk(BaseModel):
+    """A fragment of a streaming answer, as it arrives."""
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: Literal["token"] = "token"
+    text: str
+
+
+class FinalChunk(BaseModel):
+    """The last thing a stream yields: the assembled, validated answer.
+
+    A stream that ends *without* one of these did not finish — it was cut off.
+    That distinction is the reason this is a typed chunk rather than a bare
+    string: it lets a caller tell "the model is done" from "the connection
+    died", and only one of those should be persisted as an answer.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: Literal["final"] = "final"
+    response: CompletionResponse
+
+
+#: Discriminated on `kind`, so a consumer either handles both arms or fails to
+#: type-check. A stream of plain strings would have made "did it finish?"
+#: unrepresentable.
+CompletionChunk = TokenChunk | FinalChunk

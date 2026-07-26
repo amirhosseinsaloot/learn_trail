@@ -20,6 +20,7 @@ Two things that look like provider details and are not:
 from __future__ import annotations
 
 import os
+from collections.abc import AsyncIterator
 from functools import lru_cache
 from typing import Final
 
@@ -27,7 +28,14 @@ import openai
 from openai.types.chat import ChatCompletionMessageParam
 
 from ai_core.models.aliases import ModelAlias
-from ai_core.schemas.completion import ChatTurn, CompletionRequest, CompletionResponse
+from ai_core.schemas.completion import (
+    ChatTurn,
+    CompletionChunk,
+    CompletionRequest,
+    CompletionResponse,
+    FinalChunk,
+    TokenChunk,
+)
 
 #: In-network address of the gateway. The default matches the compose service
 #: name, so nothing needs configuring for local development.
@@ -124,6 +132,64 @@ async def complete(request: CompletionRequest) -> CompletionResponse:
         raise GatewayError(f"{request.alias} call failed: {exc}") from exc
 
     return CompletionResponse.from_provider(request.alias, payload)
+
+
+async def stream(request: CompletionRequest) -> AsyncIterator[CompletionChunk]:
+    """Ask a model, by alias, and yield the answer as it arrives.
+
+    Yields `TokenChunk`s as text arrives and exactly one `FinalChunk` at the end,
+    carrying the same validated `CompletionResponse` the non-streaming path
+    produces. A consumer that never sees the `FinalChunk` knows the stream was
+    cut off rather than completed — which is precisely the case where nothing
+    should be persisted as an answer.
+
+    `stream_options={"include_usage": True}` is not optional. Without it the
+    provider sends no usage block on a streamed call, and the final chunk cannot
+    be assembled — the answer would arrive with silently absent token counts,
+    which Phase 5 bills on.
+    """
+    try:
+        events = await client().chat.completions.create(
+            model=request.alias.value,
+            messages=[_as_wire_message(turn) for turn in request.messages],
+            max_tokens=request.max_tokens,
+            stream=True,
+            stream_options={"include_usage": True},
+        )
+
+        parts: list[str] = []
+        provider_model = ""
+        finish_reason = "stop"
+        usage = None
+
+        async for event in events:
+            # The usage-bearing final event carries an empty `choices` list, so
+            # every access below has to tolerate that rather than assume [0].
+            if event.usage is not None:
+                usage = event.usage
+            if event.model:
+                provider_model = event.model
+            if not event.choices:
+                continue
+            choice = event.choices[0]
+            if choice.finish_reason:
+                finish_reason = choice.finish_reason
+            text = choice.delta.content
+            if text:
+                parts.append(text)
+                yield TokenChunk(text=text)
+    except openai.APIError as exc:
+        raise GatewayError(f"{request.alias} stream failed: {exc}") from exc
+
+    yield FinalChunk(
+        response=CompletionResponse.from_streamed(
+            request.alias,
+            provider_model=provider_model,
+            text="".join(parts),
+            finish_reason=finish_reason,
+            usage=usage,
+        )
+    )
 
 
 async def answer(alias: ModelAlias, prompt: str, *, max_tokens: int = 1024) -> CompletionResponse:
