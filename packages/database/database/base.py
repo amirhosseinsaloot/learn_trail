@@ -1,9 +1,9 @@
-"""The single declarative base every LearnTrail table will hang off.
+"""The single declarative base every LearnTrail table hangs off.
 
-Phase 0 deliberately leaves this base **empty**: `Base.metadata` has zero
-tables, so `alembic revision --autogenerate` would emit an empty migration.
-That is the intended end state of this task — a runnable migration env with
-nothing to migrate yet. Phase 1 adds `chat` and `message` (docs/SPEC.md §17).
+Tables are registered by *defining* them, so `Base.metadata` is only as
+populated as the set of model modules that have been imported — see
+`database.models` and the side-effect import in migrations/env.py. As of
+Phase 1 that is `chat` and `message` (docs/SPEC.md §17).
 
 There is no `user` model here and never will be: LearnTrail is single-user with
 no auth (CLAUDE.md invariant #1).

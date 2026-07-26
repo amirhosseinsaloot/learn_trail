@@ -29,11 +29,16 @@ members = ["apps/api", "packages/database"]
 learntrail-api = { workspace = true }
 learntrail-database = { workspace = true }
 
-# Tier 1 Python tooling only (docs/CODE_QUALITY.md). Everything else
-# (anyio, respx, testcontainers, pytest-cov, import-linter, ...) is Tier 2
-# and lands in Phase 1, per CLAUDE.md invariant #6.
+# Tier 1 Python tooling, plus the Tier 2 additions each phase actually uses
+# (docs/CODE_QUALITY.md). Still deferred: respx, testcontainers, pytest-cov,
+# import-linter — each lands in the phase that needs it, per CLAUDE.md
+# invariant #6.
 [dependency-groups]
 dev = [
+    # anyio ships the pytest plugin that runs `async def` tests. It already
+    # arrives transitively via starlette, but the async database and endpoint
+    # tests import its marker directly, so it is declared rather than borrowed.
+    "anyio>=4.14",
     "mypy>=2.3,<3",
     "pytest>=9.1",
     "ruff>=0.16,<0.17",

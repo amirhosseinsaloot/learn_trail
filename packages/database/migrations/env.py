@@ -20,6 +20,13 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import Connection, create_engine, pool
 
+# Imported for its side effect: defining a model class registers its table on
+# Base.metadata, and autogenerate diffs *metadata* against the live schema. With
+# this import missing, `alembic revision --autogenerate` sees empty metadata and
+# cheerfully generates a migration that DROPS every table. It is a plain
+# `import database.models` rather than importing names, because nothing in this
+# file uses the classes — only their registration matters.
+import database.models  # noqa: F401
 from database.base import Base
 from database.config import database_url
 

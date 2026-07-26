@@ -1,10 +1,11 @@
-"""Phase 0 contract for the persistence layer.
+"""Metadata-level contract for the persistence layer.
 
-No database is required to run this: nothing here creates an engine, opens a
-connection or reflects anything. Postgres does not exist yet (plans/phase-0.md
-task 8), and these are exactly the properties that can — and should — be
-checked without it: an empty declarative base, a naming convention fixed before
-the first migration, and a URL that comes from the environment.
+No database is required to run any of this: nothing here creates an engine,
+opens a connection or reflects anything. These are the properties that can be
+checked from metadata alone — which tables are registered, the naming convention
+fixed before the first migration, and a URL that comes from the environment.
+Behaviour that needs a live Postgres (the CHECK constraints actually rejecting
+bad rows) lives in test_conversation.py.
 """
 
 import pytest
@@ -12,12 +13,19 @@ import pytest
 from database.base import Base
 from database.config import DEFAULT_DATABASE_URL, database_url
 
+# Phase 1 registers the conversation aggregate and nothing else. The remaining
+# docs/SPEC.md §17 tables arrive with the phase that introduces their concept, so
+# this is an exact comparison: a table appearing early is a phase violation
+# (CLAUDE.md invariant #6), not a head start.
+EXPECTED_TABLES = frozenset({"chat", "message"})
 
-def test_metadata_declares_no_tables_yet() -> None:
-    # Phase 0 ends at a runnable migration env with nothing to migrate; Phase 1
-    # adds `chat` and `message` (docs/SPEC.md §17). There is no `user` table
-    # here and never will be (CLAUDE.md invariant #1).
-    assert list(Base.metadata.tables) == []
+
+def test_metadata_declares_exactly_the_phase_1_tables() -> None:
+    # Populated by importing `database.models`, which `database/__init__.py` does
+    # on package import — the same mechanism migrations/env.py relies on. If that
+    # import is ever dropped, this fails rather than autogenerate silently
+    # emitting a migration that drops every table.
+    assert set(Base.metadata.tables) == set(EXPECTED_TABLES)
 
 
 def test_metadata_never_models_a_user() -> None:

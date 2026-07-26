@@ -11,5 +11,6 @@ revisions. Phase 1 adds the first two tables, `chat` and `message`
 
 from database.base import Base
 from database.config import database_url
+from database.models import Chat, ChatStatus, Message, MessageRole
 
-__all__ = ["Base", "database_url"]
+__all__ = ["Base", "Chat", "ChatStatus", "Message", "MessageRole", "database_url"]

@@ -17,12 +17,12 @@ dependencies = [
     # bridge, with one set of type/param-style quirks to learn.
     # `[binary]` ships prebuilt libpq wheels: no system libpq-dev build step.
     "psycopg[binary]>=3.2",
-    # Phase 1 note: switch to `sqlalchemy[asyncio]` when the async request-path
-    # session lands. `create_async_engine` needs greenlet, which today is pulled
-    # in only via SQLAlchemy's own platform markers — on a platform outside that
-    # list async would fail at runtime with nothing in the dependency graph
-    # explaining why.
-    "sqlalchemy>=2.0.36",
+    # The `asyncio` extra, added in Phase 1 with database/session.py: it is what
+    # pulls in greenlet, which `create_async_engine` needs. Plain `sqlalchemy`
+    # gets greenlet only via its own platform markers, so on a platform outside
+    # that list the async engine would fail at runtime with nothing in the
+    # dependency graph explaining why.
+    "sqlalchemy[asyncio]>=2.0.36",
 ]
 
 # Real distribution (unlike the workspace root, which is `package = false`):
