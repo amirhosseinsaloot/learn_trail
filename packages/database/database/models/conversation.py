@@ -148,8 +148,21 @@ class Chat(Base):
     # `onupdate` only fires for ORM/Core updates, and a hand-written migration
     # that bulk-updates rows will not touch it. That is the intended behaviour —
     # a migration is not a user edit.
+    #
+    # `clock_timestamp()`, NOT `now()`. In Postgres `now()` is an alias for
+    # `transaction_timestamp()` and is frozen for the whole transaction, so two
+    # updates in one transaction — or an update in the same transaction that
+    # inserted the row — leave this column unchanged. Since this is the column
+    # the chat list is ordered by, that failure mode is silent: the list simply
+    # does not reorder. `clock_timestamp()` advances per call.
+    #
+    # `onupdate` is ORM-side, not DDL, so it does not appear in a migration —
+    # only `server_default` does. Changing it needs no revision.
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.clock_timestamp(),
+        nullable=False,
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

@@ -1,44 +1,72 @@
-"""Phase 0 contract for the ASGI app object (`api.main:app`).
+"""Contract for the ASGI app object (`api.main:app`).
 
-Two things are worth asserting before a single route exists:
+Two things are worth asserting about the app itself, independent of what any
+handler does:
 
-1. The app exposes *nothing* beyond FastAPI's built-in documentation routes.
-   "No routes in Phase 0" (plans/phase-0.md) stays a checked claim rather than
-   a comment, and the assertion is exact so it fails the moment a route lands.
-   Phase 1's first chat/message endpoints must update it — that is the point.
-2. The OpenAPI document builds. `/openapi.json` is the backend healthcheck
-   target for docker-compose (plans/phase-0.md task 8, which explicitly rules
-   out adding a health endpoint), so a schema that cannot be generated would
-   break the Phase 0 exit criterion.
+1. The route table is exactly what we think it is. The comparison is exact, so a
+   route added without a thought — or a path accidentally renamed — fails here
+   rather than being discovered by the frontend.
+2. The OpenAPI document builds. `/openapi.json` is the backend's docker-compose
+   healthcheck target, so a schema that cannot be generated takes the whole
+   stack down; and from Phase 1 it is also the input to openapi-typescript, so
+   the frontend's types are only as good as this document.
 """
 
 from typing import Any
 
-from starlette.routing import Route
-
 from api.main import app
 
-# What FastAPI mounts on its own for a default app: the schema document, the two
-# doc UIs, and Swagger's OAuth2 redirect helper. (That last one exists on every
-# FastAPI app; it is not auth — LearnTrail has none, CLAUDE.md invariant #1.)
-FASTAPI_BUILTIN_PATHS = frozenset({"/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"})
+# The Phase 1 chat surface (docs/SPEC.md §6), path -> the verbs it answers.
+# Asserted exactly, including the methods: an accidentally-added verb on an
+# existing path is exactly the kind of thing a path-only comparison misses.
+#
+# Answer streaming is deliberately absent — docs/SPEC.md §6 lists it as a
+# separate endpoint, and this mapping is what tells us when it lands.
+CHAT_OPERATIONS = {
+    "/chats": ["get", "post"],
+    "/chats/{chat_id}": ["delete", "get", "patch"],
+    "/chats/{chat_id}/restore": ["post"],
+    "/chats/{chat_id}/messages": ["post"],
+}
 
 
-def test_app_exposes_only_fastapi_builtin_routes() -> None:
-    # Checked separately from the path comparison below: `Route` is the only
-    # route type with a `.path`, so a Mount or WebSocketRoute would otherwise
-    # be filtered out of the comparison and pass unnoticed.
-    assert all(isinstance(route, Route) for route in app.routes), (
-        "Phase 0 defines no mounts and no websocket routes"
-    )
-    paths = {route.path for route in app.routes if isinstance(route, Route)}
-    assert paths == set(FASTAPI_BUILTIN_PATHS)
+def test_openapi_document_describes_exactly_the_chat_surface() -> None:
+    """Asserted through the OpenAPI document rather than by walking `app.routes`.
 
-
-def test_openapi_document_builds_and_declares_no_operations() -> None:
+    Two reasons, and the second is why this test was rewritten: the document is
+    the actual contract (openapi-typescript generates the frontend's types from
+    it, so a drift here is a frontend compile error), and as of FastAPI 0.140
+    `include_router` no longer flattens routes into `app.routes` — it inserts a
+    private `_IncludedRouter` wrapper, so enumerating `app.routes` finds only
+    FastAPI's four built-in doc routes and would pass while asserting nothing.
+    """
     schema: dict[str, Any] = app.openapi()
     assert schema["openapi"].startswith("3.")
     assert schema["info"]["title"] == "LearnTrail API"
-    # FastAPI's own doc routes are excluded from the schema, so with no
-    # application routes this is the empty mapping.
-    assert schema["paths"] == {}
+
+    # FastAPI's own doc routes (/docs, /redoc, /openapi.json,
+    # /docs/oauth2-redirect) are excluded from the schema, so this is exactly the
+    # application surface. That last one exists on every FastAPI app; it is not
+    # auth — LearnTrail has none (CLAUDE.md invariant #1), which the security
+    # test below enforces.
+    operations = {path: sorted(methods) for path, methods in schema["paths"].items()}
+    assert operations == CHAT_OPERATIONS
+
+
+def test_no_endpoint_declares_a_security_scheme() -> None:
+    """CLAUDE.md invariant #1, asserted at the HTTP boundary.
+
+    Phase-independent, like its counterpart in packages/database: it is vacuously
+    true today and must still hold in Phase 12. If auth is ever added by
+    accident — a stray `Depends(oauth2_scheme)`, a copied snippet — FastAPI
+    records it in the OpenAPI document and this fails.
+    """
+    schema: dict[str, Any] = app.openapi()
+    assert "securitySchemes" not in schema.get("components", {})
+    offenders = {
+        f"{method.upper()} {path}"
+        for path, operations in schema["paths"].items()
+        for method, operation in operations.items()
+        if operation.get("security")
+    }
+    assert offenders == set(), f"no endpoint may require auth; found {sorted(offenders)}"

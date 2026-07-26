@@ -39,6 +39,10 @@ dev = [
     # arrives transitively via starlette, but the async database and endpoint
     # tests import its marker directly, so it is declared rather than borrowed.
     "anyio>=4.14",
+    # Starlette's TestClient and FastAPI's ASGITransport are both httpx-based;
+    # without it, importing the test client fails with a RuntimeError telling you
+    # to install it. Test-only, hence the dev group.
+    "httpx>=0.28",
     "mypy>=2.3,<3",
     "pytest>=9.1",
     "ruff>=0.16,<0.17",
