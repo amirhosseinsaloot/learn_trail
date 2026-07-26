@@ -1,7 +1,11 @@
 # Phase 1 — Basic AI chat
 
-Status: IN PROGRESS — 3 of 6 tasks landed (tables, gateway, endpoints). Phase test
-is still a placeholder, so `make status` reports Phase 1 FAIL, correctly.
+Status: IN PROGRESS — 5 of 6 tasks landed. The exit criterion has been
+demonstrated by hand against a real model (see docs/STATE.md), but the phase test
+is still a placeholder, so `make status` reports Phase 1 FAIL — correctly, since
+an unasserted criterion is a claim rather than a fact.
+
+Remaining: the chat page in `apps/web`, and the real `tests/phases/test_phase_1.py`.
 
 ## Exit criterion
 
@@ -116,7 +120,23 @@ Exit criterion (verbatim, docs/SPEC.md):
       - No `temperature` and no client-side retries, both deliberate and argued
         in the code: reasoning-tier models reject sampling params under
         `drop_params: false`, and retry/fallback is the gateway's job.
-- [ ] SSE streaming endpoint for answers (owner: `backend-api`) — commit: `____`
+- [x] SSE streaming endpoint for answers (owner: `backend-api`) — commit: `f05f900`
+      - **Validate before the response begins.** Once a stream is open the status
+        line is sent, so 404/409 is no longer expressible — the error would have
+        to be an SSE `error` event a client may ignore.
+      - **Persistence hangs off the final chunk only.** A stream that dies
+        partway leaves the chat untouched; a half-answer recorded as complete is
+        not recoverable, and from Phase 3 these become Learnings.
+      - `stream_options={"include_usage": True}` is mandatory — without it a
+        streamed call returns no usage block at all.
+      - The request-scoped `Depends(session)` **does** survive into a
+        `StreamingResponse` generator on FastAPI 0.140 (verified end to end: the
+        commit inside the generator worked). Do not assume this silently; if it
+        ever changes, the fix is a dedicated session inside the generator.
+      - Consume with `fetch` + ReadableStream, not `EventSource` — EventSource is
+        GET-only and this is a POST because it creates a message.
+      - Answering a chat whose last turn is an assistant message is a 409, or
+        the model replies to itself.
 - [ ] Chat page: send question, render streamed answer, list/resume chats (owner: `frontend-web`) — commit: `____`
       - Phase 0 deliberately gave `frontend` **no `depends_on: backend`** — the page
         was static, so coupling them would only have made the frontend un-startable

@@ -7,22 +7,29 @@ See [plans/phase-1.md](../plans/phase-1.md).
 correct: its exit criterion (stop the app, restart, continue a conversation) is
 not met, because there is no chat endpoint yet.
 
-Phase 1 progress — **4 of 6 tasks landed**:
+Phase 1 progress — **5 of 6 tasks landed**:
 
 - [x] `chat` + `message` tables + first Alembic revision + async session — `421feb8`
 - [x] LiteLLM gateway service + the three aliases — `e9a9118`
 - [x] Chat endpoints: create / list / resume / rename / soft-delete / restore /
       append a user turn — `41808f1`
 - [x] Typed gateway client in `packages/ai_core` (now a workspace member) — `773b4a8`
-- [ ] SSE streaming endpoint (the answer half of "send a message")
+- [x] SSE answer endpoint, `POST /chats/{id}/answer` — `f05f900`
 - [ ] Chat page in `apps/web`
 - [ ] Replace the `tests/phases/test_phase_1.py` placeholder
 
-**The persistence half of the Phase 1 exit criterion is already demonstrated**,
-against the running stack rather than a test client: create a chat, append two
-messages, `docker compose stop backend && start backend`, GET the chat — the
-transcript comes back intact. What is missing for the criterion proper is an
-answer to resume *to*, i.e. the model call and the SSE endpoint.
+**The Phase 1 exit criterion is met in substance**, demonstrated against the
+running stack with a real model: ask a question, watch the answer stream in,
+`docker compose stop backend && up -d backend`, then continue the conversation —
+the follow-up was answered using the earlier turns (61 input tokens against 16
+for the first question, so prior context genuinely reached the model). That is
+docs/SPEC.md §15 verbatim: "You can stop the application, restart it and continue
+a previous conversation."
+
+`make status` still reports Phase 1 **FAIL**, and correctly: the criterion is only
+*claimed* until `tests/phases/test_phase_1.py` asserts it, and that file is still
+the failing placeholder. Writing it is the remaining task that changes the
+status line.
 
 Phase 0 tasks, for reference: task 1 `1de4a59`, 2 `1a603eb`, 3 `0c56b7f`,
 4 `2b0e933`, 5 `06b9736`, 6 `6132a66`, 7 `600d919`, 8 `e7bed57`, 9 `872bcb5`.
