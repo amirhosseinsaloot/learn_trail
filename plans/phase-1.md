@@ -96,7 +96,26 @@ Exit criterion (verbatim, docs/SPEC.md):
         step, not a repo change. Arming it (deleting the `if`/`else`/`fi` per
         lefthook.yml's own instructions) requires installing gitleaks first;
         doing it before that would hard-fail every commit.
-- [ ] Direct LiteLLM call wrapped in Pydantic request/response models (pre-LangGraph) (owner: `ai-orchestration`) — commit: `____`
+- [x] Direct LiteLLM call wrapped in Pydantic request/response models (pre-LangGraph) (owner: `ai-orchestration`) — commit: `773b4a8`
+      - `ModelAlias` is an enum, not a `str`: invariant #2 becomes a type error
+        rather than a convention. `CompletionResponse.from_provider` is the only
+        route from provider payload to usable object (invariant #4), and it
+        raises on a missing usage block instead of defaulting to zeros — Phase 5
+        bills on those numbers and Phase 6 evaluates on them.
+      - **The OpenAI SDK's message roles are separate TypedDicts**, so
+        `{"role": turn.role, "content": ...}` in a comprehension is
+        `dict[str, str]` and matches none of them. Needs a per-role `match`
+        so mypy can narrow. Expect this again in Phase 2 when LangChain message
+        types enter.
+      - A new workspace member must also be added to Ruff's
+        `known-first-party`, or its imports sort as third-party.
+      - `litellm` now publishes **127.0.0.1:4000** (loopback only) so the live
+        gateway test can run at all — the image has no pytest and the gateway
+        was previously in-network only. The live test is marked `slow`, so
+        `make test` skips it; run it with `pytest -m slow`.
+      - No `temperature` and no client-side retries, both deliberate and argued
+        in the code: reasoning-tier models reject sampling params under
+        `drop_params: false`, and retry/fallback is the gateway's job.
 - [ ] SSE streaming endpoint for answers (owner: `backend-api`) — commit: `____`
 - [ ] Chat page: send question, render streamed answer, list/resume chats (owner: `frontend-web`) — commit: `____`
       - Phase 0 deliberately gave `frontend` **no `depends_on: backend`** — the page

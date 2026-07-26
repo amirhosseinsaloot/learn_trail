@@ -7,13 +7,13 @@ See [plans/phase-1.md](../plans/phase-1.md).
 correct: its exit criterion (stop the app, restart, continue a conversation) is
 not met, because there is no chat endpoint yet.
 
-Phase 1 progress — **3 of 6 tasks landed**:
+Phase 1 progress — **4 of 6 tasks landed**:
 
 - [x] `chat` + `message` tables + first Alembic revision + async session — `421feb8`
 - [x] LiteLLM gateway service + the three aliases — `e9a9118`
 - [x] Chat endpoints: create / list / resume / rename / soft-delete / restore /
       append a user turn — `41808f1`
-- [ ] LiteLLM call wrapped in Pydantic models (`packages/ai_core`, not yet a member)
+- [x] Typed gateway client in `packages/ai_core` (now a workspace member) — `773b4a8`
 - [ ] SSE streaming endpoint (the answer half of "send a message")
 - [ ] Chat page in `apps/web`
 - [ ] Replace the `tests/phases/test_phase_1.py` placeholder
@@ -140,6 +140,14 @@ them (which also exercised `ON DELETE CASCADE` against real data).
   and `litellm` (**no host port** — in-network only at `http://litellm:4000`).
   Both built images are development images running as uid 1000; production stages
   land when there is something to deploy. Driven by `make up` / `down` / `logs` / `ps`.
+- `packages/ai_core/` — `learntrail-ai-core`, exposing top-level `ai_core`.
+  `models/aliases.py` (the `ModelAlias` enum — invariant #2 as a type),
+  `schemas/completion.py` (typed request/response — invariant #4), and
+  `models/gateway.py`, **the only module in the repo permitted to import a
+  provider SDK** (docs/CODE_QUALITY.md's Semgrep rule excludes exactly that
+  path). `graphs/`, `agents/`, `safety/`, `telemetry/`, `retrieval/` are still
+  empty and each arrives with its phase. Deps: openai (as an HTTP client for the
+  OpenAI-*compatible* proxy), pydantic.
 - `infra/litellm/config.yaml` — the three aliases (`learning-fast` and
   `safety-judge` → `openai/gpt-4o-mini`, `learning-deep` → `openai/gpt-4o`), each
   reading `OPENAI_API_KEY` from the environment. **The only place a provider is
