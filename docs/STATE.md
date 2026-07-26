@@ -42,23 +42,21 @@ root pyproject.toml is part of the task that first puts code there.
 
 ## In-flight / half-done
 
-Two things `git log` cannot show, both still open:
+One open item, and one resolved note worth keeping:
 
-- **No `.env`, and `.env.example` still names the wrong variable.** The provider
-  moved to OpenAI, so the gateway reads `OPENAI_API_KEY` — but `.env.example`
-  (committed at `e6616d6`, before the switch) still says `ANTHROPIC_API_KEY`.
-  The agent cannot fix it: its permission settings deny both reads and writes
-  under `.env*`. Do this by hand:
+- **RESOLVED — the gateway now reaches a real provider.** `.env` exists with a
+  working `OPENAI_API_KEY`, and all three aliases were called live: `learning-fast`
+  → `gpt-4o-mini-2024-07-18`, `learning-deep` → `gpt-4o-2024-08-06`,
+  `safety-judge` → `gpt-4o-mini-2024-07-18`. The credential boundary was
+  re-checked *after* the key landed, which is the moment it could have leaked:
+  `printenv` in both the backend and frontend containers shows no provider key
+  (CLAUDE.md invariant #3 holds). `.env` is gitignored; `.env.example` holds only
+  placeholders.
 
-  ```
-  printf 'OPENAI_API_KEY=\nLITELLM_MASTER_KEY=sk-local-dev-change-me\n' > .env.example
-  cp .env.example .env    # then paste the real key into .env
-  ```
-
-  Until then **no model call can succeed**. The stack stays healthy regardless —
-  `env_file` uses `required: false` and the healthcheck probes liveliness, not
-  providers — so this surfaces only on the first real call, as a clear
-  `AuthenticationError` naming `OPENAI_API_KEY` (verified).
+  Note for anyone editing `.env` later: `env_file` is read when the container is
+  *created*, so a changed `.env` needs
+  `docker compose up -d --force-recreate litellm` — a plain `restart` keeps the
+  old environment and the change looks like it did nothing.
 - **gitleaks is still inert.** lefthook.yml skips it when the binary is missing,
   and the first credential path now exists, so this is overdue. Arming it means
   installing the binary first, then deleting the `if`/`else`/`fi` guard as
