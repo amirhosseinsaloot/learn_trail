@@ -1,54 +1,40 @@
 # State
 
-Current phase: **Phase 0 — Development environment** (see [plans/phase-0.md](../plans/phase-0.md))
+Current phase: **Phase 0 is COMPLETE. Phase 1 — Basic AI chat is next** (see
+[plans/phase-1.md](../plans/phase-1.md)); nothing in Phase 1 has been started.
 
-Last completed task: Phase 0 task 7 — lefthook hooks + `make` targets (commit
-`600d919`). Earlier: task 1 (SPEC §16 layout) `1de4a59`, task 2 (uv env) `1a603eb`,
-task 3 (FastAPI skeleton + Ruff + mypy) `0c56b7f`, task 4 (Alembic env) `2b0e933`,
-task 5 (pytest discovery) `06b9736`, task 6 (Next.js skeleton) `6132a66`.
+`make status` reports **Phase 0 PASS** — the first phase to go green. Phases 1–12
+are red, as designed.
 
-**Two tasks remain in Phase 0**: docker-compose.yml, then the real
-`tests/phases/test_phase_0.py`.
+Last completed task: Phase 0 task 9 — the real `tests/phases/test_phase_0.py`
+(commit `872bcb5`). Earlier: task 1 (SPEC §16 layout) `1de4a59`, task 2 (uv env)
+`1a603eb`, task 3 (FastAPI skeleton + Ruff + mypy) `0c56b7f`, task 4 (Alembic env)
+`2b0e933`, task 5 (pytest discovery) `06b9736`, task 6 (Next.js skeleton) `6132a66`,
+task 7 (lefthook + make targets) `600d919`, task 8 (docker-compose) `e7bed57`.
 
-Plan audit (2026-07-24): before starting the build, the Phase 0 plan was amended —
-Phase 0's compose/exit criterion narrowed to Postgres + backend + frontend (services
-join docker-compose in the phase that introduces their concept; LiteLLM → Phase 1,
-Phoenix → Phase 5), compose task moved after the app skeletons, Alembic pinned to
-packages/database/, single root pytest config, top-level prompts/ made the single
-canonical prompts dir, and `make status` now prefers `.venv/bin/python`.
+Next task: the first Phase 1 task in [plans/phase-1.md](../plans/phase-1.md). Read
+the notes carried onto its LiteLLM-in-compose and chat-page tasks before starting
+either — they record what Phase 0 deliberately left undone for Phase 1 to do
+(`.env` and gitleaks arriving with the first real credential, the
+`frontend`→`backend` dependency, and the fact that adding a compose service
+**requires** widening `PHASE_0_SERVICES` in `tests/phases/test_phase_0.py` in the
+same commit or Phase 0 flips to FAIL).
 
-Tooling track (2026-07-24, planning only — nothing installed): docs/CODE_QUALITY.md
-defines the phased code-quality toolchain (tiers, either/or decisions, FAST/SLOW CI
-lanes, import-linter contracts, per-phase checklist); docs/ROADMAP_TOOLING.md maps
-tools onto the §15 phases without editing the spec. plans/phase-0.md now carries the
-Phase 0 tooling tasks (uv, Ruff, mypy-only, Biome, typescript-eslint, tsc strict,
-lefthook).
-
-Both CODE_QUALITY.md open calls are now resolved (2026-07-25, commit `181a0e6`):
-`@next/eslint-plugin-next` is allowed as the single non-type-aware ESLint exception,
-and Zod is scoped to purely-local form state only (never API shapes — those come from
-openapi-typescript in Phase 1). Neither adds a Phase 0 dependency beyond the ESLint
-plugin.
-
-Next task: Write `docker-compose.yml` — Postgres, backend, frontend, each with a
-healthcheck — owner `infra-devops`. Exactly three services; LiteLLM joins in Phase 1 and
-Phoenix in Phase 5. The Postgres connection contract, the wheel-packaging trap that
-would leave the backend image without a migration env, the backend healthcheck target
-(`/openapi.json`, since there are no routes), and the frontend's port/dev command/
-repo-root build context are all recorded under that task in plans/phase-0.md. Read that
-bullet first — it exists so this task does not rediscover them.
-
-Correction landed 2026-07-25 (commit `7594deb`): `tests/phases/test_phase_5.py` and
-`plans/phase-5.md` both wrongly claimed the spec defines no Phase 5 exit criterion and
-substituted an invented one. SPEC line 1175 does define one; both now quote it
-verbatim. The other PROXY labels (phases 0, 10, 11, 12) were checked and are correct.
+Phase 0 exit criterion, verified by running it: `make up` brings postgres, backend
+and frontend to `healthy`; `alembic upgrade head` runs from inside the backend
+container; host ports 5432, 8000 and 3000 all answer.
 
 ## In-flight / half-done
 
 Nothing in-flight. This section exists for work `git log`/`git status` can't show on
 their own — unapplied migrations, endpoints stubbed to return 501, flaky tests, a
-half-renamed function. Nothing like that exists yet because no application code exists
-yet.
+half-renamed function.
+
+One thing worth knowing that git cannot show: the Docker **images are built and the
+stack may still be running** on this machine. `make ps` says which. `make down`
+stops it and keeps the `postgres_data` volume; `docker compose down -v` is the
+explicit throw-the-data-away gesture. The database has zero tables — Alembic has
+zero revisions until Phase 1.
 
 ## What exists right now
 
@@ -60,19 +46,20 @@ yet.
   (`safety-engineer`, `observability-engineer`, `eval-engineer`, `red-team`,
   `retrieval-engineer`, `prompt-optimizer`) do not exist yet — add each when its phase
   starts.
-- `tests/phases/test_phase_0.py` … `test_phase_12.py` — all intentionally failing
-  placeholders.
+- `tests/phases/test_phase_0.py` — **real**, and green. `test_phase_1.py` …
+  `test_phase_12.py` are still intentionally failing placeholders.
 - `plans/phase-0.md` … `phase-12.md` — task breakdown per phase.
 - `docs/decisions/` — ADR template + 0001 (why exit criteria are executable).
-- The SPEC §16 directory tree (`apps/`, `packages/`, `tests/`, `prompts/`, `infra/`),
-  every leaf holding only a `.gitkeep`. `packages/ai_core/prompts/` is deliberately
-  absent — top-level `prompts/` is canonical.
+- The SPEC §16 directory tree (`apps/`, `packages/`, `tests/`, `prompts/`, `infra/`).
+  `packages/ai_core/prompts/` is deliberately absent — top-level `prompts/` is
+  canonical. `packages/ai_core/` and `packages/evals/` are still `.gitkeep`-only and
+  are not yet uv workspace members (ai_core joins in Phase 1, evals in Phase 6).
 - Root `pyproject.toml` + committed `uv.lock` + `.python-version` (3.12) + `README.md`.
   `uv sync --all-groups` builds `.venv/` with pytest 9.1.1, ruff 0.16.0, mypy 2.3.0.
-  The root is a uv workspace aggregator (`package = false`) with one member, `apps/api`.
+  The root is a uv workspace aggregator (`package = false`) with two members,
+  `apps/api` and `packages/database`.
 - Ruff (Tier 1 rule sets, 100 cols) and mypy (strict + Pydantic plugin) are configured
-  in the root `pyproject.toml` and **green across the repo** — `ruff check`,
-  `ruff format --check`, and `mypy .` all exit 0.
+  in the root `pyproject.toml` and **green across the repo**.
 - `apps/api/` — `learntrail-api`, a hatchling distribution exposing top-level `api`.
   `api.main:app` is a FastAPI app object with **no routes**; only FastAPI's built-in
   `/openapi.json`, `/docs`, `/redoc` exist. Runtime deps: fastapi, pydantic, uvicorn.
@@ -81,10 +68,11 @@ yet.
   `DATABASE_URL`, and a runnable Alembic env at `packages/database/alembic.ini` with
   **zero revisions**. Driver: psycopg 3. Deps: alembic, psycopg[binary], sqlalchemy.
 - One root `pytest.ini` discovering `tests/`, `apps/` and `packages/` under
-  `--import-mode=importlib`. `pytest` from the root: **13 failed, 8 passed** — the 13
-  phase placeholders are red on purpose, the 8 real tests in `apps/api/tests/` and
-  `packages/database/tests/` pass. Which of the four test homes a new test belongs in
-  is written down in [CLAUDE.md](../CLAUDE.md).
+  `--import-mode=importlib`. `pytest` from the root: **12 failed, 10 passed** — the 12
+  remaining phase placeholders are red on purpose; the 8 unit tests in
+  `apps/api/tests/` and `packages/database/tests/` plus the 2 real Phase 0 phase tests
+  pass. Which of the four test homes a new test belongs in is written down in
+  [CLAUDE.md](../CLAUDE.md).
 - A pnpm workspace at the root (`package.json`, `pnpm-workspace.yaml`, committed
   `pnpm-lock.yaml`, `biome.jsonc`) with one member, `apps/web`. Biome lives at the root;
   Next/React/TS/ESLint in `apps/web`.
@@ -100,14 +88,15 @@ yet.
   staged files; pre-push (~5s) runs `make lint-py type-py type-web lint-web test`.
   gitleaks is wired but inert until Phase 1. `make help` lists every target;
   `make fast` runs the whole Phase 0 check set.
+- `docker-compose.yml` + `.dockerignore` + `infra/docker/{backend,frontend}.Dockerfile`
+  — **exactly three services**, each with a real healthcheck: `postgres` (18-alpine,
+  5432 published, named `postgres_data` volume), `backend` (uvicorn `--reload` on
+  bind-mounted source, venv at `/opt/venv` outside `/app`, 8000 published), `frontend`
+  (`next dev`, anonymous volumes over `node_modules` and `.next`, 3000 published).
+  Both images are development images running as uid 1000; production stages land when
+  there is something to deploy. Driven by `make up` / `down` / `logs` / `ps`.
 - **No CI.** Hooks and `make fast` are the only enforcement, and both are bypassable
   with `--no-verify`. The FAST CI lane moved to Phase 1.
-- Still no `docker-compose.yml`.
-
-The Postgres connection contract task 8 must satisfy, and a wheel-packaging trap that
-would break `alembic upgrade head` in the backend image, are both recorded under the
-compose task in [plans/phase-0.md](../plans/phase-0.md) — read that bullet before
-writing compose.
 
 ---
 

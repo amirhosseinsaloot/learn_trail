@@ -1,6 +1,6 @@
 # Phase 0 — Development environment
 
-Status: CURRENT PHASE
+Status: COMPLETE — all 9 tasks landed; `make status` reports Phase 0 PASS.
 
 ## Exit criterion
 
@@ -69,8 +69,8 @@ reference Dockerfiles that only exist after the app skeletons land.
       - `typecheck` is `next typegen && tsc --noEmit`, not bare `tsc`: the
         tsconfig includes generated, gitignored files, so bare `tsc` fails on a
         clean checkout. Do not "simplify" it.
-- [ ] Write docker-compose.yml: Postgres, backend, frontend — each with a healthcheck
-      (owner: `infra-devops`) — commit: `____`
+- [x] Write docker-compose.yml: Postgres, backend, frontend — each with a healthcheck
+      (owner: `infra-devops`) — commit: `e7bed57`
       - Postgres contract, fixed by task 4 (`packages/database/database/config.py`):
         role `learntrail`, password `learntrail`, database `learntrail`, container
         port 5432 published on host 5432. Compose must pass the backend
@@ -96,11 +96,40 @@ reference Dockerfiles that only exist after the app skeletons land.
         no `.dockerignore` yet; without one, `COPY` drags in `node_modules/`,
         `.next/` and `.venv/`. Do not bind-mount over `node_modules` (pnpm
         symlink farm) — use anonymous volumes.
-- [ ] Replace the placeholder tests/phases/test_phase_0.py with the executable exit
-      criterion described above (owner: `backend-api`) — commit: `____`
+- [x] Replace the placeholder tests/phases/test_phase_0.py with the executable exit
+      criterion described above (owner: `backend-api`) — commit: `872bcb5`
+      - Split into a static half (`docker compose config`, runs with no daemon)
+        and a live half (`docker compose ps`), so a red phase says which of
+        "environment down" / "phase not built" it is. All three failure modes
+        were exercised by hand.
+      - `docker compose ps --format json` emits **JSON Lines** on Compose v5,
+        and a single JSON array on other versions. The test accepts both; a
+        parser written against one shape fails with a `JSONDecodeError` that
+        reads like a broken stack rather than a tooling change.
 
 ## Watch items surfaced during the build
 
+- **`tests/phases/test_phase_0.py` asserts the service list by set EQUALITY** (task 9).
+  This is deliberate — it is how invariant #6 gets enforced mechanically, since a
+  subset check would let any future service slip into compose unnoticed. The cost is
+  that the phase that legitimately adds a service must widen `PHASE_0_SERVICES` in the
+  same commit, or Phase 0 flips to FAIL for a reason that has nothing to do with
+  Phase 0. Forward-carried onto the LiteLLM task in plans/phase-1.md.
+- **Postgres 18 moved the data directory** (task 8). The volume mounts
+  `/var/lib/postgresql`, not the `/var/lib/postgresql/data` every pre-18 example uses:
+  from 18 the official image keeps the cluster in a major-version subdirectory
+  (`/var/lib/postgresql/18/docker`) so `pg_upgrade --link` never crosses a mount
+  boundary, and a volume on `.../data` makes the entrypoint abort with "there appears
+  to be PostgreSQL data in /var/lib/postgresql/data (unused mount/volume)".
+- **`pg_isready` must be forced over TCP** (task 8). The entrypoint runs a temporary
+  server during first-boot initdb that listens on the unix socket only, so a
+  socket-based probe reports ready mid-initialisation and lets dependents connect to
+  the wrong server. `-h 127.0.0.1` is what makes `service_healthy` mean anything.
+- **Anonymous volumes are seeded from the image, and a missing path is created
+  root-owned** (task 8). `/app/apps/web/.next` has to exist, owned by `node`, in the
+  frontend image, or `next dev` dies with `EACCES: permission denied, mkdir
+  '/app/apps/web/.next/dev'`. `.dockerignore` excludes `.next` on purpose (a host
+  build's output must never be baked in), so it is a `RUN mkdir`, not a `COPY`.
 - **mypy 2.x + Pydantic plugin — RESOLVED in task 3.** The lock resolved mypy 2.3.0,
   a major past what docs/CODE_QUALITY.md was written against, and mypy has no stable
   plugin API. Verified by running `mypy --strict` over a trivial `BaseModel` and
