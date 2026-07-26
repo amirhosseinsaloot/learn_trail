@@ -1,35 +1,27 @@
 # State
 
-Current phase: **Phase 1 — Basic AI chat, IN PROGRESS.** Phase 0 is complete.
-See [plans/phase-1.md](../plans/phase-1.md).
+Current phase: **Phase 1 is COMPLETE. Phase 2 — LangGraph workflow is next**
+(see [plans/phase-2.md](../plans/phase-2.md)); nothing in Phase 2 has been started.
 
-`make status` reports **Phase 0 PASS**, phases 1–12 FAIL. Phase 1's red is
-correct: its exit criterion (stop the app, restart, continue a conversation) is
-not met, because there is no chat endpoint yet.
+`make status` reports **Phase 0 PASS, Phase 1 PASS**. Phases 2–12 are red, as
+designed.
 
-Phase 1 progress — **5 of 6 tasks landed**:
+All six Phase 1 tasks: `chat`+`message` tables and the async session `421feb8`,
+the LiteLLM gateway and its three aliases `e9a9118`, the chat endpoints
+`41808f1`, the typed gateway client `773b4a8`, the SSE answer endpoint `f05f900`,
+the chat page `2b6228c`, and the real phase test `1e092b1`.
 
-- [x] `chat` + `message` tables + first Alembic revision + async session — `421feb8`
-- [x] LiteLLM gateway service + the three aliases — `e9a9118`
-- [x] Chat endpoints: create / list / resume / rename / soft-delete / restore /
-      append a user turn — `41808f1`
-- [x] Typed gateway client in `packages/ai_core` (now a workspace member) — `773b4a8`
-- [x] SSE answer endpoint, `POST /chats/{id}/answer` — `f05f900`
-- [ ] Chat page in `apps/web`
-- [ ] Replace the `tests/phases/test_phase_1.py` placeholder
+The end-to-end chat works against a real provider: ask a question in the browser,
+watch the answer stream in, stop and restart the backend, and continue the same
+conversation. `tests/phases/test_phase_1.py` asserts that by actually restarting
+the container — it makes **no model call**, because it runs on every
+`make status`.
 
-**The Phase 1 exit criterion is met in substance**, demonstrated against the
-running stack with a real model: ask a question, watch the answer stream in,
-`docker compose stop backend && up -d backend`, then continue the conversation —
-the follow-up was answered using the earlier turns (61 input tokens against 16
-for the first question, so prior context genuinely reached the model). That is
-docs/SPEC.md §15 verbatim: "You can stop the application, restart it and continue
-a previous conversation."
-
-`make status` still reports Phase 1 **FAIL**, and correctly: the criterion is only
-*claimed* until `tests/phases/test_phase_1.py` asserts it, and that file is still
-the failing placeholder. Writing it is the remaining task that changes the
-status line.
+Next: Phase 2's four tasks. Its own task list frames it as a refactor —
+"replace the Phase 1 direct call with a call into the graph from the chat
+endpoint" — so the seam it replaces is `stream()` in
+`apps/api/api/routers/chats.py`, and `_working_context` there is what becomes the
+`build_context` node.
 
 Phase 0 tasks, for reference: task 1 `1de4a59`, 2 `1a603eb`, 3 `0c56b7f`,
 4 `2b0e933`, 5 `06b9736`, 6 `6132a66`, 7 `600d919`, 8 `e7bed57`, 9 `872bcb5`.
@@ -70,12 +62,20 @@ One open item, and one resolved note worth keeping:
   lefthook.yml's own comment instructs. Arming it before installing would
   hard-fail every commit.
 
+- **A frontend dependency change needs the anonymous volume renewed.**
+  `apps/web/node_modules` is an anonymous volume seeded from the image, so
+  `pnpm add` on the host never reaches the container. It needs
+  `docker compose build frontend` **and**
+  `docker compose up -d --force-recreate --renew-anon-volumes frontend`;
+  without the renewal the container keeps its old dependency tree and fails with
+  module-not-found. Same family of trap as the `env_file` note above.
+
 Also worth knowing: the Docker **images are built and the stack may still be
 running** on this machine (`make ps`). `make down` keeps the `postgres_data`
 volume; `docker compose down -v` throws the data away. The database is migrated
-to `head` — one revision, `chat` and `message` — and **has zero rows**: the
-end-to-end verification above wrote a chat and two messages, then hard-deleted
-them (which also exercised `ON DELETE CASCADE` against real data).
+to `head` — one revision, `chat` and `message` — and **has zero rows**: every
+end-to-end verification cleaned up after itself, and the Phase 1 phase test
+purges its own chat on each run.
 
 ## What exists right now
 
@@ -127,11 +127,14 @@ them (which also exercised `ON DELETE CASCADE` against real data).
 - A pnpm workspace at the root (`package.json`, `pnpm-workspace.yaml`, committed
   `pnpm-lock.yaml`, `biome.jsonc`) with one member, `apps/web`. Biome lives at the root;
   Next/React/TS/ESLint in `apps/web`.
-- `apps/web/` — Next.js App Router + React + Tailwind, one static landing page, no
-  fetch and no `.env`. Biome (format + fast lint), typescript-eslint (type-aware rules
-  only) + `@next/eslint-plugin-next`, `tsc --noEmit` with `strict`,
-  `noUncheckedIndexedAccess` and `allowJs: false`. `biome ci`, `eslint`, `typecheck` and
-  the production build all pass.
+- `apps/web/` — Next.js App Router + React + Tailwind. **The chat page**: ask a
+  question, watch the answer stream in, list and resume conversations.
+  `src/lib/api/client.ts` (openapi-fetch, typed from the generated
+  `schema.gen.ts`) and `src/lib/api/stream.ts` (SSE via `fetch` +
+  ReadableStream — `EventSource` cannot be used, it is GET-only). Biome
+  (format + fast lint), typescript-eslint (type-aware rules only) +
+  `@next/eslint-plugin-next`, `tsc --noEmit` with `strict`,
+  `noUncheckedIndexedAccess` and `allowJs: false`. All green.
 - Frontend commands: root `pnpm run lint:web` / `type:web`; in `apps/web`, `dev`,
   `build`, `lint`, `typecheck` (= `next typegen && tsc --noEmit` — the prefix is
   load-bearing, the tsconfig includes generated files).
