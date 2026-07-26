@@ -6,6 +6,9 @@ readme = "../../README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.121.2",
+    # api -> ai_core -> database. The API never imports a provider SDK; it asks
+    # ai_core for an alias (CLAUDE.md invariant #2).
+    "learntrail-ai-core",
     # The dependency direction of docs/ARCHITECTURE.md §7, made real:
     # api -> database, never the reverse. `database` imports nothing from `api`.
     # Phase 1's import-linter contracts will enforce this rather than trusting it.

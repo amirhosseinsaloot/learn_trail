@@ -42,6 +42,7 @@ WORKDIR /app
 # hatchling reads it while building their metadata.
 COPY pyproject.toml uv.lock README.md ./
 COPY apps/api/pyproject.toml apps/api/pyproject.toml
+COPY packages/ai_core/pyproject.toml packages/ai_core/pyproject.toml
 COPY packages/database/pyproject.toml packages/database/pyproject.toml
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-workspace
@@ -60,6 +61,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # layout task 4 just fixed, and mixes lifecycle-managed migration scripts into
 # an importable package.
 COPY apps/api/ apps/api/
+COPY packages/ai_core/ packages/ai_core/
 COPY packages/database/ packages/database/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
@@ -84,4 +86,5 @@ HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=6 \
 # --host 0.0.0.0 so the port is reachable from outside the container's
 # loopback. --reload picks up edits to the bind-mounted source.
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", \
-     "--reload-dir", "/app/apps/api", "--reload-dir", "/app/packages/database"]
+     "--reload-dir", "/app/apps/api", "--reload-dir", "/app/packages/ai_core", \
+     "--reload-dir", "/app/packages/database"]

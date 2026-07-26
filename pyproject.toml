@@ -8,6 +8,7 @@ requires-python = ">=3.12"
 # single documented command (`uv sync --all-groups`) installs the whole repo's
 # runtime + dev environment. Members declare their own real dependencies.
 dependencies = [
+    "learntrail-ai-core",
     "learntrail-api",
     "learntrail-database",
 ]
@@ -19,13 +20,14 @@ dependencies = [
 package = false
 
 # Members are listed explicitly, not globbed: apps/web is a pnpm project and
-# packages/ai_core and packages/evals are still .gitkeep-only, and uv errors on
-# a member directory with no pyproject.toml. They join this list in the phase
-# that introduces them (ai_core in Phase 1, evals in Phase 6).
+# packages/evals is still .gitkeep-only, and uv errors on a member directory with
+# no pyproject.toml. A package joins this list in the phase that introduces it —
+# ai_core arrived in Phase 1 with the gateway client, evals lands in Phase 6.
 [tool.uv.workspace]
-members = ["apps/api", "packages/database"]
+members = ["apps/api", "packages/ai_core", "packages/database"]
 
 [tool.uv.sources]
+learntrail-ai-core = { workspace = true }
 learntrail-api = { workspace = true }
 learntrail-database = { workspace = true }
 
@@ -86,7 +88,10 @@ select = [
 "**/tests/**/*.py" = ["S101"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["api", "database"]
+# Every top-level package this repo publishes. A member missing from this list is
+# sorted as a third-party import, which is how `ai_core` briefly ended up
+# interleaved with `openai` and `pydantic` — add new members here when they land.
+known-first-party = ["ai_core", "api", "database"]
 
 [tool.ruff.format]
 docstring-code-format = true

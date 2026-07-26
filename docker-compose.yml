@@ -92,9 +92,15 @@ services:
       # import time. Do not "simplify" this scheme.
       DATABASE_URL: postgresql+psycopg://learntrail:learntrail@postgres:5432/learntrail
       # The gateway's in-network address. The backend asks LiteLLM for an ALIAS
-      # and never holds a provider credential itself — note there is no API key
-      # in this block (CLAUDE.md invariants #2 and #3).
+      # and never holds a provider credential (CLAUDE.md invariants #2 and #3) —
+      # note there is still no OPENAI_API_KEY in this block, and `printenv`
+      # inside the container is the check.
       LITELLM_BASE_URL: http://litellm:4000
+      # The key the backend presents *to the proxy*. Not a provider credential:
+      # it buys access to the gateway, not to OpenAI, and it is worthless outside
+      # this network. Phase 10 replaces it with per-caller virtual keys when
+      # routing and budgets arrive.
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-local-dev-change-me}
       PYTHONUNBUFFERED: "1"
     ports:
       - "8000:8000"
@@ -103,6 +109,7 @@ services:
       # editable installs point at; the venv lives at /opt/venv, outside /app,
       # precisely so these mounts cannot shadow it.
       - ./apps/api:/app/apps/api
+      - ./packages/ai_core:/app/packages/ai_core
       - ./packages/database:/app/packages/database
     depends_on:
       postgres:
@@ -182,13 +189,19 @@ services:
   # credential, and the only one that talks to a provider (CLAUDE.md invariant
   # #3). Aliases live in infra/litellm/config.yaml, not here — invariant #2.
   #
-  # No host port published. The gateway is reachable only from inside the
-  # compose network, as `http://litellm:4000`. Publishing it would put an
-  # endpoint that spends money on the host's network for no reason; the backend
-  # is the only intended caller.
+  # Published on LOOPBACK ONLY — `127.0.0.1:4000`, not `4000`. The difference is
+  # the point: the short form binds 0.0.0.0 and exposes a money-spending endpoint
+  # to every host on the network, which for a local dev stack is a real hazard.
+  #
+  # It is published at all (an earlier revision published nothing) so the live
+  # gateway test in packages/ai_core/tests can actually run. A test that can never
+  # execute is worse than no test: it looks like coverage and asserts nothing.
+  # The backend still reaches the gateway in-network at `http://litellm:4000`.
   # ---------------------------------------------------------------------------
   litellm:
     image: ghcr.io/berriai/litellm:v1.80.5-stable
+    ports:
+      - "127.0.0.1:4000:4000"
     env_file:
       # `required: false` is load-bearing: without it, compose refuses to start
       # ANY service when .env is absent, so a clean clone could not run the
