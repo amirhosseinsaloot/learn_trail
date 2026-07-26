@@ -1,10 +1,5 @@
 {
   "permissions": {
-    "additionalDirectories": [
-      "/home/amir/learn_trail/.claude",
-      "/home/amir/learn_trail/.claude/agents",
-      "/home/amir/learn_trail/.claude/transcript-snapshots"
-    ],
     "allow": [
       "Bash(npm run *)",
       "Bash(npm test *)",
@@ -47,10 +42,10 @@
       "Bash(gh pr view *)",
       "Bash(gh pr diff *)",
       "Bash(gh run view *)",
-      "Bash(mkdir -p /home/amir/learn_trail/.claude/agents \u0026\u0026 ls -la /home/amir/learn_trail/.claude)",
+      "Bash(mkdir -p /home/amir/learn_trail/.claude/agents && ls -la /home/amir/learn_trail/.claude)",
       "Bash(git -C /home/amir/learn_trail mv overview.md docs/SPEC.md)",
       "Bash(git -C /home/amir/learn_trail status --short)",
-      "Bash(sed -i 's#\\\\.\\\\./\\\\.\\\\./overview\\\\.md#../../docs/SPEC.md#g; s#overview\\\\.md#docs/SPEC.md#g' .claude/agents/*.md \u0026\u0026 grep -rn \"SPEC.md\\\\|overview.md\" .claude/agents/*.md)",
+      "Bash(sed -i 's#\\\\.\\\\./\\\\.\\\\./overview\\\\.md#../../docs/SPEC.md#g; s#overview\\\\.md#docs/SPEC.md#g' .claude/agents/*.md && grep -rn \"SPEC.md\\\\|overview.md\" .claude/agents/*.md)",
       "Bash(python3 /tmp/claude-1000/-home-amir-learn-trail/45282ffb-2299-49ec-a4f8-1619c9e9c297/scratchpad/gen_phase_tests.py)",
       "Bash(python3 -m pytest --version)",
       "Bash(python3 -m pip --version)",
@@ -90,7 +85,7 @@
       "Bash(make -pn status)",
       "Bash(~/.local/bin/uv sync *)",
       "Bash(awk '/^## 16/,/^## 17/' docs/SPEC.md)",
-      "Bash(awk 'NR\u003e=1 \u0026\u0026 /^# 6\\\\./,/^# 7\\\\./' docs/SPEC.md)",
+      "Bash(awk 'NR>=1 && /^# 6\\\\./,/^# 7\\\\./' docs/SPEC.md)",
       "Bash(.venv/bin/ruff check *)",
       "Bash(.venv/bin/ruff format *)",
       "Bash(echo \"---RUFF EXIT $?---\")",
@@ -149,20 +144,9 @@
       "Bash(echo \"git commit exit=$?\")",
       "Bash(echo \"make fast exit=$?\")",
       "Bash(node_modules/.bin/lefthook run *)",
-      "Bash(node_modules/.bin/lefthook uninstall *)"
+      "Bash(node_modules/.bin/lefthook uninstall *)",
+      "Bash(xargs -I{} sh -c 'echo \"--- {}\"; cat {}')"
     ],
-    "ask": [
-      "Bash(git push *)",
-      "Bash(gh pr create *)",
-      "Bash(gh pr merge *)",
-      "Bash(rm *)",
-      "Bash(docker *)",
-      "Bash(kubectl *)",
-      "Bash(terraform *)",
-      "Bash(aws *)",
-      "Bash(gcloud *)"
-    ],
-    "defaultMode": "acceptEdits",
     "deny": [
       "Bash(sudo *)",
       "Bash(git push --force *)",
@@ -182,6 +166,23 @@
       "Edit(.env)",
       "Edit(.env.*)",
       "Edit(.git/**)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(gh pr create *)",
+      "Bash(gh pr merge *)",
+      "Bash(rm *)",
+      "Bash(docker *)",
+      "Bash(kubectl *)",
+      "Bash(terraform *)",
+      "Bash(aws *)",
+      "Bash(gcloud *)"
+    ],
+    "defaultMode": "acceptEdits",
+    "additionalDirectories": [
+      "/home/amir/learn_trail/.claude",
+      "/home/amir/learn_trail/.claude/agents",
+      "/home/amir/learn_trail/.claude/transcript-snapshots"
     ]
   }
 }
