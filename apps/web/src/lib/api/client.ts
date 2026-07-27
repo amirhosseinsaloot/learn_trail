@@ -38,3 +38,72 @@ export type Chat = components["schemas"]["ChatRead"];
 export type ChatDetail = components["schemas"]["ChatDetail"];
 /** One persisted turn. */
 export type Message = components["schemas"]["MessageRead"];
+
+/**
+ * A model-generated summary awaiting review. **Not knowledge.**
+ *
+ * The type is distinct from `Learning` for the same reason the tables are: a
+ * draft is something the model proposed, a Learning is something the user
+ * accepted. Sharing a type would make it possible to render one as the other.
+ */
+export type SummaryDraft = components["schemas"]["SummaryDraftRead"];
+/** The editable body shared by a draft and a Learning. */
+export type SummaryContent = components["schemas"]["SummaryContent"];
+/** An approved Learning — the library list view. */
+export type Learning = components["schemas"]["LearningRead"];
+/** An approved Learning with its full revision history. */
+export type LearningDetail = components["schemas"]["LearningDetail"];
+/** One version of a Learning's content. */
+export type LearningRevision = components["schemas"]["LearningRevisionRead"];
+
+/**
+ * The narrative fields, in the order they are shown.
+ *
+ * Declared once so the review editor and the read-only views cannot drift into
+ * showing different fields — which would let a user approve a draft without
+ * having seen part of it.
+ */
+export const SUMMARY_FIELDS = [
+  "key_concepts",
+  "distinctions",
+  "examples",
+  "open_questions",
+  "uncertainty_notes",
+  "suggested_tags",
+] as const satisfies readonly (keyof SummaryContent)[];
+
+export type SummaryListField = (typeof SUMMARY_FIELDS)[number];
+
+/** Human-readable labels for those fields. */
+export const FIELD_LABELS: Record<SummaryListField, string> = {
+  key_concepts: "Key concepts",
+  distinctions: "Distinctions",
+  examples: "Examples",
+  open_questions: "Open questions",
+  uncertainty_notes: "Uncertainty",
+  suggested_tags: "Tags",
+};
+
+/**
+ * Pull the editable body out of a draft or Learning's `structured_content`.
+ *
+ * That field is typed as an open record by openapi-typescript, because the
+ * backend stores it as JSONB. This is the one place that narrowing happens, so
+ * the assertion is written down once rather than scattered across components.
+ */
+export function toContent(structured: Record<string, unknown>): SummaryContent {
+  return structured as unknown as SummaryContent;
+}
+
+/**
+ * One list field, always an array.
+ *
+ * The generated types mark these optional because the backend gives them
+ * defaults, so a payload may legitimately omit an empty list. Under
+ * `noUncheckedIndexedAccess` every read would otherwise need its own `?? []`,
+ * and one forgotten instance is a crash while rendering a Learning. Narrowing
+ * once here keeps that impossible.
+ */
+export function listField(content: SummaryContent, field: SummaryListField): readonly string[] {
+  return content[field] ?? [];
+}

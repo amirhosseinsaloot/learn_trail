@@ -12,8 +12,10 @@
 
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { API_BASE_URL, api, type Chat, type ChatDetail } from "@/lib/api/client";
+import { SummaryReview } from "@/components/SummaryReview";
+import { API_BASE_URL, api, type Chat, type ChatDetail, type SummaryDraft } from "@/lib/api/client";
 import { type AnswerDone, streamAnswer } from "@/lib/api/stream";
 
 export default function ChatPage() {
@@ -24,6 +26,9 @@ export default function ChatPage() {
   const [streaming, setStreaming] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** The draft awaiting review for the open chat, if there is one. */
+  const [draft, setDraft] = useState<SummaryDraft | null>(null);
+  const [summarising, setSummarising] = useState(false);
 
   const refreshChats = useCallback(async () => {
     const { data, error } = await api.GET("/chats", {});
@@ -51,6 +56,14 @@ export default function ChatPage() {
     }
     setOpenChat(data);
     setNotice(null);
+
+    // A draft may already be waiting from a previous visit — it lives in the
+    // database, not in this component's state, so reopening the chat must show
+    // it rather than silently losing it.
+    const pending = await api.GET("/chats/{chat_id}/summary", {
+      params: { path: { chat_id: chatId } },
+    });
+    setDraft(pending.error === undefined ? pending.data : null);
   }, []);
 
   const send = useCallback(async () => {
@@ -117,6 +130,32 @@ export default function ChatPage() {
     }
   }, [busy, openChat, question, openConversation, refreshChats]);
 
+  const summarise = useCallback(async () => {
+    if (openChat === null || summarising) return;
+    setSummarising(true);
+    setNotice(null);
+    try {
+      const { data, error, response } = await api.POST("/chats/{chat_id}/summary", {
+        params: { path: { chat_id: openChat.id } },
+      });
+      if (error !== undefined) {
+        // 422 is the interesting one: the model produced a summary and it was
+        // *rejected* before anything was written (the Phase 3 exit criterion).
+        // Saying so plainly is better than "something went wrong", because the
+        // user's next move — regenerate — is different from a transport failure.
+        setNotice(
+          response.status === 422
+            ? "the generated summary was rejected before saving; try regenerating"
+            : "could not summarise this conversation",
+        );
+        return;
+      }
+      setDraft(data);
+    } finally {
+      setSummarising(false);
+    }
+  }, [openChat, summarising]);
+
   return (
     <main className="mx-auto flex min-h-screen max-w-5xl gap-6 px-6 py-10">
       <ChatSidebar
@@ -125,6 +164,7 @@ export default function ChatPage() {
         onOpen={openConversation}
         onNew={() => {
           setOpenChat(null);
+          setDraft(null);
           setNotice(null);
         }}
       />
@@ -138,6 +178,23 @@ export default function ChatPage() {
             Answers are generated server-side through the LiteLLM gateway. Nothing here becomes an
             approved Learning without you saying so.
           </p>
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() => void summarise()}
+              disabled={openChat === null || openChat.messages.length === 0 || summarising}
+              className="rounded border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:border-emerald-500 hover:text-emerald-300 disabled:opacity-40"
+            >
+              {summarising
+                ? "Summarising…"
+                : draft !== null
+                  ? "Regenerate summary"
+                  : "Summarise this conversation"}
+            </button>
+            <Link href="/learnings" className="text-sm text-sky-400 hover:text-sky-300">
+              My Learnings →
+            </Link>
+          </div>
         </header>
 
         {notice !== null && (
@@ -147,6 +204,19 @@ export default function ChatPage() {
           >
             {notice}
           </p>
+        )}
+
+        {draft !== null && (
+          <SummaryReview
+            draft={draft}
+            onApproved={(learningId) => {
+              setDraft(null);
+              setNotice(`saved to My Learnings (${learningId.slice(0, 8)}…)`);
+            }}
+            onDismissed={() => {
+              setDraft(null);
+            }}
+          />
         )}
 
         <Transcript chat={openChat} streaming={streaming} />

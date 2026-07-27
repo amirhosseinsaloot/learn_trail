@@ -137,10 +137,17 @@ export interface paths {
          *     as its own endpoint, and this is it. `POST /chats/{id}/messages` appends the
          *     question; this produces the reply.
          *
-         *     Validation happens *before* the response begins. Once a stream is open the
-         *     status line is already sent, so a 404 or 409 is no longer expressible — the
-         *     error would have to arrive as an SSE `error` event that a client is free to
-         *     ignore. Everything that can be checked up front therefore is.
+         *     **Phase 2 replaced the direct model call here with a graph invocation.** What
+         *     this handler now does is translate: HTTP in, graph state out, graph events
+         *     back to SSE. The five steps of the workflow — validate, build context, choose
+         *     model, generate, persist — live in `ai_core.graphs.chat`, where each is a
+         *     named node the checkpointer records.
+         *
+         *     The HTTP-level checks below survive that move on purpose. They are not a
+         *     duplicate of the graph's `validate_input`: these exist to produce *status
+         *     codes*, and a status code can only be sent before the stream opens. The graph
+         *     node guards the graph's own preconditions for any caller, including ones that
+         *     never came through HTTP.
          *
          *     Consume it with `fetch` + a ReadableStream, not `EventSource`: EventSource
          *     only issues GET requests, and this endpoint is a POST because it creates a
@@ -153,10 +160,202 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/chats/{chat_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pending Draft
+         * @description The draft currently awaiting review for a chat.
+         */
+        get: operations["get_pending_draft_chats__chat_id__summary_get"];
+        put?: never;
+        /**
+         * Generate Summary
+         * @description Summarise a conversation into a draft awaiting review.
+         *
+         *     Runs the summary graph until it interrupts for approval. What comes back is a
+         *     *draft* — model output the user has not yet accepted.
+         *
+         *     Calling this again replaces any pending draft for the chat, which is what
+         *     "regenerate" means (docs/SPEC.md §15). A partial unique index enforces the
+         *     one-pending-draft rule at the database level, so the replacement is not a
+         *     convention this handler could forget.
+         *
+         *     A summary that fails validation is a 422 and **nothing is written** — that is
+         *     the Phase 3 exit criterion, and it holds because the graph raises before
+         *     reaching its `store_draft` node.
+         */
+        post: operations["generate_summary_chats__chat_id__summary_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/summaries/{draft_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit Draft
+         * @description Edit a draft before approving it.
+         *
+         *     Edits land on the draft, not on a Learning: nothing here has been approved
+         *     yet. The graph run stays interrupted throughout — editing is not a decision,
+         *     and a user may edit repeatedly before making one.
+         */
+        patch: operations["edit_draft_summaries__draft_id__patch"];
+        trace?: never;
+    };
+    "/summaries/{draft_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Draft
+         * @description Promote a draft into a Learning. **The only path by which one is created.**
+         *
+         *     Resumes the interrupted graph with the human's decision, so the promotion
+         *     happens inside the workflow that produced the draft rather than beside it.
+         *
+         *     The approved content is the draft's *current* content, edits included — the
+         *     user approves what they are looking at, not what the model first produced.
+         *     Revision 1 records `change_source=model` regardless, because the text
+         *     originated as a generated draft; a later edit writes `human`.
+         */
+        post: operations["approve_draft_summaries__draft_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/summaries/{draft_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Draft
+         * @description Decline a draft. Nothing is promoted; the draft is kept as a record.
+         */
+        post: operations["reject_draft_summaries__draft_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learnings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Learnings
+         * @description My Learnings — everything the user has approved, most recent first.
+         */
+        get: operations["list_learnings_learnings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learnings/{learning_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Learning
+         * @description One Learning with its full revision history.
+         */
+        get: operations["get_learning_learnings__learning_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Learning
+         * @description Soft-delete a Learning. Restorable, like a chat (docs/SPEC.md §6).
+         */
+        delete: operations["delete_learning_learnings__learning_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Edit Learning
+         * @description Edit an approved Learning, writing a new revision.
+         *
+         *     The previous content is not overwritten in place — it becomes history. That
+         *     is what lets the library answer "what did this say when I approved it", which
+         *     is the question that makes an edited Learning trustworthy rather than merely
+         *     current.
+         */
+        patch: operations["edit_learning_learnings__learning_id__patch"];
+        trace?: never;
+    };
+    "/learnings/{learning_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Learning
+         * @description Undo a soft delete.
+         */
+        post: operations["restore_learning_learnings__learning_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ChangeSource
+         * @description Who caused a revision (docs/SPEC.md §17, `learning_revision.change_source`).
+         *
+         *     The distinction the whole approval gate exists to preserve: `MODEL` means the
+         *     text came from a generated draft the user approved, `HUMAN` means the user
+         *     wrote or edited it themselves. Without this column the library would be a pile
+         *     of text with no record of what was authored and what was merely accepted.
+         * @enum {string}
+         */
+        ChangeSource: "model" | "human";
         /**
          * ChatCreate
          * @description Body for creating a chat.
@@ -251,10 +450,129 @@ export interface components {
          * @enum {string}
          */
         ChatStatus: "active" | "deleted";
+        /**
+         * DraftStatus
+         * @description Where a draft is in review (docs/SPEC.md §4).
+         *
+         *     A draft leaves `PENDING` exactly once. `APPROVED` records that it became a
+         *     Learning; `REJECTED` records that the user said no. Both are kept rather than
+         *     deleted — "the model proposed this and I declined" is information, and Phase 6
+         *     evaluates on precisely that signal.
+         * @enum {string}
+         */
+        DraftStatus: "pending" | "approved" | "rejected";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * LearningDetail
+         * @description An approved Learning with its full revision history.
+         */
+        LearningDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Source Chat Id */
+            source_chat_id: string | null;
+            /** Title */
+            title: string;
+            /** Structured Content */
+            structured_content: {
+                [key: string]: unknown;
+            };
+            /**
+             * Approved At
+             * Format: date-time
+             */
+            approved_at: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Deleted At */
+            deleted_at: string | null;
+            /** Revisions */
+            revisions: components["schemas"]["LearningRevisionRead"][];
+        };
+        /**
+         * LearningEdit
+         * @description A human edit to an approved Learning. Writes a new revision.
+         */
+        LearningEdit: {
+            content: components["schemas"]["SummaryContent"];
+            /** Note */
+            note?: string | null;
+        };
+        /**
+         * LearningRead
+         * @description An approved Learning, without its history — the library list view.
+         */
+        LearningRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Source Chat Id */
+            source_chat_id: string | null;
+            /** Title */
+            title: string;
+            /** Structured Content */
+            structured_content: {
+                [key: string]: unknown;
+            };
+            /**
+             * Approved At
+             * Format: date-time
+             */
+            approved_at: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Deleted At */
+            deleted_at: string | null;
+        };
+        /**
+         * LearningRevisionRead
+         * @description One version of a Learning's content.
+         */
+        LearningRevisionRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Revision Number */
+            revision_number: number;
+            /** Structured Content */
+            structured_content: {
+                [key: string]: unknown;
+            };
+            change_source: components["schemas"]["ChangeSource"];
+            /** Note */
+            note: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /**
          * MessageCreate
@@ -300,6 +618,70 @@ export interface components {
          * @enum {string}
          */
         MessageRole: "user" | "assistant" | "system";
+        /**
+         * SummaryContent
+         * @description The editable body of a draft or a Learning.
+         *
+         *     A separate type from `ai_core.schemas.summary.LearningSummary` on purpose,
+         *     even though the fields match. That one is what a *model* must produce and is
+         *     validated on the way out of the model; this one is what a *person* may submit
+         *     when they edit. Sharing the type would mean either loosening the model's
+         *     contract or imposing generation-time rules on a human's edit — and a user who
+         *     wants to delete every open question from their own Learning is entitled to.
+         */
+        SummaryContent: {
+            /** Title */
+            title: string;
+            /** Overview */
+            overview: string;
+            /** Key Concepts */
+            key_concepts?: string[];
+            /** Distinctions */
+            distinctions?: string[];
+            /** Examples */
+            examples?: string[];
+            /** Open Questions */
+            open_questions?: string[];
+            /** Suggested Tags */
+            suggested_tags?: string[];
+            /** Uncertainty Notes */
+            uncertainty_notes?: string[];
+        };
+        /**
+         * SummaryDraftRead
+         * @description A draft awaiting review. Model output, not knowledge.
+         */
+        SummaryDraftRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Chat Id
+             * Format: uuid
+             */
+            chat_id: string;
+            /** Title */
+            title: string;
+            /** Structured Content */
+            structured_content: {
+                [key: string]: unknown;
+            };
+            status: components["schemas"]["DraftStatus"];
+            /** Prompt Version */
+            prompt_version: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -566,6 +948,321 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pending_draft_chats__chat_id__summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SummaryDraftRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_summary_chats__chat_id__summary_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SummaryDraftRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_draft_summaries__draft_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SummaryContent"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SummaryDraftRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_draft_summaries__draft_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_draft_summaries__draft_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_learnings_learnings_get: {
+        parameters: {
+            query?: {
+                /** @description Include soft-deleted. */
+                include_deleted?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_learning_learnings__learning_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                learning_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_learning_learnings__learning_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                learning_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_learning_learnings__learning_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                learning_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LearningEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_learning_learnings__learning_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                learning_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningDetail"];
                 };
             };
             /** @description Validation Error */

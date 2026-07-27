@@ -1,10 +1,10 @@
 # State
 
-Current phase: **Phase 2 is COMPLETE. Phase 3 — Structured summary generation
-is next** (see [plans/phase-3.md](../plans/phase-3.md)); nothing in Phase 3 has
-been started.
+Current phase: **Phase 3 is COMPLETE. Phase 4 — Safety pipeline is next**
+(see [plans/phase-4.md](../plans/phase-4.md)); nothing in Phase 4 has been
+started.
 
-`make status` reports **Phase 0, 1 and 2 PASS**. Phases 3–12 are red, as
+`make status` reports **Phase 0, 1, 2 and 3 PASS**. Phases 4–12 are red, as
 designed.
 
 All six Phase 1 tasks: `chat`+`message` tables and the async session `421feb8`,
@@ -25,12 +25,22 @@ and the Postgres checkpointer records each one, so a request can be replayed out
 of storage afterwards. That replay is what `tests/phases/test_phase_2.py`
 asserts.
 
-Next: Phase 3, structured summary generation. Two things there attach to what
-Phase 2 built: the summary graph is a *second* graph (docs/SPEC.md §7 sketches
-it) and it interrupts for human approval — which is the first real use of the
-checkpointer's resumability, and the reason it exists rather than being deferred.
-CLAUDE.md invariant #5 is the one to hold onto: the model may draft a summary, it
-may never promote one.
+Phase 3 added the approval gate. A conversation can be summarised into a
+`summary_draft` by a second graph
+(`load_chat -> prepare_context -> generate_summary -> validate_summary ->
+store_draft -> await_approval -> apply_decision`), reviewed and edited in the UI,
+and promoted to a `learning` **only** by an explicit approval that resumes the
+graph's interrupt. Every Learning carries a revision history distinguishing text
+that came from a model draft (`model`) from text the user wrote (`human`).
+
+Next: Phase 4, the safety pipeline. It attaches to the chat graph — docs/SPEC.md
+§8's input checks belong in `validate_input` and the output checks after
+`generate_answer`, both of which already exist as nodes for that reason. Note it
+will add the first **conditional** edge to the chat graph, which
+`packages/ai_core/tests/test_chat_graph.py` asserts against today: that test must
+be changed deliberately, not deleted. Layers 4 and 5 already exist from Phase 3
+(Guardrails validators, Pydantic schemas); Phase 4 adds layers 1–3 and the
+`safety_event` table.
 
 Phase 0 tasks, for reference: task 1 `1de4a59`, 2 `1a603eb`, 3 `0c56b7f`,
 4 `2b0e933`, 5 `06b9736`, 6 `6132a66`, 7 `600d919`, 8 `e7bed57`, 9 `872bcb5`.
@@ -85,10 +95,10 @@ purges its own chat on each run.
   (`safety-engineer`, `observability-engineer`, `eval-engineer`, `red-team`,
   `retrieval-engineer`, `prompt-optimizer`) do not exist yet — add each when its phase
   starts.
-- `tests/phases/test_phase_0.py`, `test_phase_1.py`, `test_phase_2.py` — **real**,
-  and green. `test_phase_3.py` … `test_phase_12.py` are still intentionally
-  failing placeholders. Only the Phase 2 test calls a model; the other two
-  deliberately do not, since `make status` runs them.
+- `tests/phases/test_phase_0.py` … `test_phase_3.py` — **real**, and green.
+  `test_phase_4.py` … `test_phase_12.py` are still intentionally failing
+  placeholders. Only the Phase 2 test calls a model; the others deliberately do
+  not, since `make status` runs them all.
 - `docs/ARCHITECTURE.md` — the one-page structural view (layers, request path,
   approval gate, data model, dependency direction), with the phase that
   introduces each component.
