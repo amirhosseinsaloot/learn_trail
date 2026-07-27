@@ -63,6 +63,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY apps/api/ apps/api/
 COPY packages/ai_core/ packages/ai_core/
 COPY packages/database/ packages/database/
+# Prompt versions are runtime content, not source (docs/SPEC.md §12): the
+# backend reads them from disk at call time, so they must be in the image. The
+# loader resolves this path relative to the installed package, which is why it
+# lands at /app/prompts and not somewhere package-relative.
+COPY prompts/ prompts/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 

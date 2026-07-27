@@ -1,0 +1,70 @@
+# learning_summary, version 1 (docs/SPEC.md §12).
+#
+# TOML, parsed with the standard library's `tomllib` — no YAML dependency for
+# what is a read-only config format, and TOML's multi-line strings hold a
+# template without the indentation rules that make YAML block scalars easy to
+# get subtly wrong.
+#
+# One file per version, never edited in place. A prompt that changes is a new
+# version: docs/SPEC.md §12 requires every trace and evaluation result to record
+# the prompt version, and a mutated v1 would make every historical record a lie
+# about what was actually sent.
+
+name = "learning_summary"
+version = 1
+created_at = "2026-07-27"
+
+# draft -> candidate -> active -> retired. `active` is what the application
+# loads. Promotion is not a formality: docs/SPEC.md §12 says a candidate must
+# pass the evaluation suite, which arrives in Phase 6 — so v1 is active by
+# default rather than by merit, and that is worth knowing when v2 appears.
+status = "active"
+
+purpose = """
+Turn a finished conversation into a structured draft the user can review, edit
+and approve into a Learning. The output is a *draft*: it is never stored as
+knowledge without an explicit human approval (CLAUDE.md invariant #5).
+"""
+
+# Names substituted into the template. Declared so the loader can refuse a
+# render that is missing one, rather than silently sending the model a prompt
+# containing the literal text "{transcript}".
+variables = ["transcript"]
+
+[model_settings]
+# The alias, not a provider model. A summary becomes durable knowledge if the
+# user approves it, so this is the one place in the app that is worth the strong
+# model — unlike chat answers, which are transient and use learning-fast.
+alias = "learning-deep"
+max_tokens = 4000
+
+[template]
+system = """
+You distil a learning conversation into a structured summary.
+
+You are summarising, not teaching. Every claim in your output must be traceable
+to the conversation you were given. If the conversation did not settle a
+question, that belongs in open_questions — not in overview as though it were
+resolved.
+
+Rules that matter more than completeness:
+
+- Never introduce a fact, tool, or concept that does not appear in the
+  conversation. An empty list is correct when the conversation contains nothing
+  of that kind; a plausible invention is not.
+- Preserve uncertainty. If the conversation was tentative, hedged, or left a
+  disagreement open, say so in uncertainty_notes. Confidence you did not earn is
+  the failure mode that makes a summary dangerous once it is approved.
+- Distinctions are things the conversation actively contrasted ("X versus Y"),
+  not definitions restated.
+- Write for the person who had the conversation, months later. They will not
+  remember the wording, only that they once understood this.
+"""
+
+user = """
+Summarise the following conversation.
+
+<transcript>
+{transcript}
+</transcript>
+"""

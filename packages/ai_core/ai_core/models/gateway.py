@@ -26,6 +26,8 @@ from typing import Final
 
 import openai
 from openai.types.chat import ChatCompletionMessageParam
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.openai import OpenAIProvider
 
 from ai_core.models.aliases import ModelAlias
 from ai_core.schemas.completion import (
@@ -132,6 +134,22 @@ async def complete(request: CompletionRequest) -> CompletionResponse:
         raise GatewayError(f"{request.alias} call failed: {exc}") from exc
 
     return CompletionResponse.from_provider(request.alias, payload)
+
+
+def typed_model(alias: ModelAlias) -> OpenAIChatModel:
+    """The same gateway, as a Pydantic AI model.
+
+    Phase 3 runs typed generation through Pydantic AI (docs/SPEC.md §7), which
+    needs a model object rather than a bare client. Building it *here* is what
+    keeps the provider named in exactly one module: `ai_core.agents` asks for an
+    alias and never imports a provider SDK, so the Semgrep rule in
+    docs/CODE_QUALITY.md needs no new exception.
+
+    It reuses `client()` rather than constructing its own, so typed generation
+    and streaming chat share one connection pool — and one place where the
+    gateway URL and key are resolved.
+    """
+    return OpenAIChatModel(alias.value, provider=OpenAIProvider(openai_client=client()))
 
 
 async def stream(request: CompletionRequest) -> AsyncIterator[CompletionChunk]:

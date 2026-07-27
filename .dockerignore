@@ -57,9 +57,13 @@ build/
 # README.md is deliberately NOT excluded: apps/api and packages/database both
 # declare `readme = "../../README.md"`, and their build backend reads it while
 # resolving metadata, so dropping it breaks `uv sync`.
+#
+# `prompts/` is deliberately NOT excluded either, as of Phase 3. It was excluded
+# while it held only a .gitkeep; it now holds the prompt versions the backend
+# loads at runtime (docs/SPEC.md §12), so an image without it starts fine and
+# then fails on the first summary with a FileNotFoundError.
 docs/
 plans/
-prompts/
 tests/
 CLAUDE.md
 Makefile

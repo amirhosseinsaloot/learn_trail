@@ -111,6 +111,10 @@ services:
       - ./apps/api:/app/apps/api
       - ./packages/ai_core:/app/packages/ai_core
       - ./packages/database:/app/packages/database
+      # Prompt versions, mounted so editing one is visible without a rebuild —
+      # the same affordance the source mounts give. Read-only: a prompt version
+      # is immutable content, and the container has no business writing to it.
+      - ./prompts:/app/prompts:ro
     depends_on:
       postgres:
         # Genuine dependency, even though Phase 0 opens no connection at

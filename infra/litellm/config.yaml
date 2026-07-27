@@ -50,12 +50,19 @@ model_list:
     litellm_params:
       model: openai/gpt-4o
       api_key: os.environ/OPENAI_API_KEY
-      # A ceiling, not a target. Left here so a runaway generation fails visibly
-      # instead of quietly costing money. Note LiteLLM translates `max_tokens`
-      # to whatever the target model expects, so this stays correct if the model
-      # above is swapped for a reasoning-tier one that wants
-      # `max_completion_tokens`.
-      max_tokens: 16000
+      # No `max_tokens` here, deliberately — an earlier revision had one and it
+      # broke every typed-generation call with a 400.
+      #
+      # LiteLLM translates a caller's `max_tokens` into whatever the target model
+      # expects (`max_completion_tokens` for current OpenAI models). When the
+      # alias *also* carries one, the provider receives both spellings of the
+      # same parameter and rejects the request outright. Callers already set
+      # their own ceiling (`CompletionRequest.max_tokens`, and the prompt file's
+      # `model_settings.max_tokens`), which is the right place for it: a ceiling
+      # depends on what is being generated, not on which model serves it.
+      #
+      # An alias answers "which model plays this role". It should not also try to
+      # answer "how long may the answer be".
 
   # ---------------------------------------------------------------------------
   # safety-judge — the LLM-as-judge alias for the Phase 4 safety pipeline and the
