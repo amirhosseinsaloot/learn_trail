@@ -37,17 +37,6 @@ Phase 0 tasks, for reference: task 1 `1de4a59`, 2 `1a603eb`, 3 `0c56b7f`,
 Phase 0's exit criterion was verified by running it, and still passes with four
 services.
 
-**Phase 2 was requested and is blocked on Phase 1.** Phase 2's own task list says
-"replace the Phase 1 direct call with a call into the graph from the chat
-endpoint", and SPEC §15 words it the same way — it is a refactor of Phase 1's
-code. There is no chat endpoint to convert, nothing for `persist` to write
-through, and nothing for the checkpointer to key on. Phase 1's four remaining
-tasks are the prerequisite, not a detour.
-
-Next task: the chat endpoints. `packages/ai_core` is still `.gitkeep`-only and is
-**not** a uv workspace member — adding it to `[tool.uv.workspace] members` in the
-root pyproject.toml is part of the task that first puts code there.
-
 ## In-flight / half-done
 
 One open item, and one resolved note worth keeping:
@@ -96,9 +85,10 @@ purges its own chat on each run.
   (`safety-engineer`, `observability-engineer`, `eval-engineer`, `red-team`,
   `retrieval-engineer`, `prompt-optimizer`) do not exist yet — add each when its phase
   starts.
-- `tests/phases/test_phase_0.py` — **real**, and green; it now covers four
-  services. `test_phase_1.py` … `test_phase_12.py` are still intentionally
-  failing placeholders.
+- `tests/phases/test_phase_0.py`, `test_phase_1.py`, `test_phase_2.py` — **real**,
+  and green. `test_phase_3.py` … `test_phase_12.py` are still intentionally
+  failing placeholders. Only the Phase 2 test calls a model; the other two
+  deliberately do not, since `make status` runs them.
 - `docs/ARCHITECTURE.md` — the one-page structural view (layers, request path,
   approval gate, data model, dependency direction), with the phase that
   introduces each component.
@@ -106,20 +96,22 @@ purges its own chat on each run.
 - `docs/decisions/` — ADR template + 0001 (why exit criteria are executable).
 - The SPEC §16 directory tree (`apps/`, `packages/`, `tests/`, `prompts/`, `infra/`).
   `packages/ai_core/prompts/` is deliberately absent — top-level `prompts/` is
-  canonical. `packages/ai_core/` and `packages/evals/` are still `.gitkeep`-only and
-  are not yet uv workspace members (ai_core joins in Phase 1, evals in Phase 6).
+  canonical. `packages/evals/` is still `.gitkeep`-only and not a uv workspace
+  member; it joins in Phase 6.
 - Root `pyproject.toml` + committed `uv.lock` + `.python-version` (3.12) + `README.md`.
   `uv sync --all-groups` builds `.venv/` with pytest 9.1.1, ruff 0.16.0, mypy 2.3.0.
-  The root is a uv workspace aggregator (`package = false`) with two members,
-  `apps/api` and `packages/database`.
+  The root is a uv workspace aggregator (`package = false`) with three members:
+  `apps/api`, `packages/ai_core` and `packages/database`.
 - Ruff (Tier 1 rule sets, 100 cols) and mypy (strict + Pydantic plugin) are configured
   in the root `pyproject.toml` and **green across the repo**.
 - `apps/api/` — `learntrail-api`, a hatchling distribution exposing top-level `api`.
   `api.main:app` is a thin entrypoint that includes `api.routers.chats`; handlers
-  live in `api/routers/`, wire schemas in `api/schemas.py`. Surface:
+  live in `api/routers/`, wire schemas in `api/schemas.py`, SSE framing in
+  `api/sse.py`, and the compiled graph's lifetime in `api/graph.py`. Surface:
   `GET|POST /chats`, `GET|PATCH|DELETE /chats/{id}`, `POST /chats/{id}/restore`,
-  `POST /chats/{id}/messages`. No auth, no CORS yet (CORS lands with the first
-  browser fetch). Runtime deps: fastapi, pydantic, uvicorn, learntrail-database.
+  `POST /chats/{id}/messages`, `POST /chats/{id}/answer`. No auth; CORS allows one
+  origin from `WEB_ORIGIN`. Runtime deps: fastapi, pydantic, uvicorn,
+  learntrail-ai-core, learntrail-database.
 - `packages/database/` — `learntrail-database`, exposing top-level `database`.
   `Base` + a constraint naming convention, `database_url()` reading
   `DATABASE_URL`, an async engine and session factory in `database/session.py`,
@@ -128,8 +120,9 @@ purges its own chat on each run.
   database with no drift. Driver: psycopg 3. Deps: alembic, psycopg[binary],
   sqlalchemy[asyncio].
 - One root `pytest.ini` discovering `tests/`, `apps/` and `packages/` under
-  `--import-mode=importlib`. `pytest` from the root: **12 failed, 10 passed** — the 12
-  remaining phase placeholders are red on purpose; the 8 unit tests in
+  `--import-mode=importlib`. `pytest` from the root: **10 failed, 102 passed,
+  1 skipped** — the 10 remaining phase placeholders are red on purpose, the skip
+  is the paid live-gateway test (`-m slow`), and the rest are the unit tests in
   `apps/api/tests/` and `packages/database/tests/` plus the 2 real Phase 0 phase tests
   pass. Which of the four test homes a new test belongs in is written down in
   [CLAUDE.md](../CLAUDE.md).
