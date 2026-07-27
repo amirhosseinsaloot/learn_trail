@@ -1,9 +1,10 @@
 # State
 
-Current phase: **Phase 1 is COMPLETE. Phase 2 — LangGraph workflow is next**
-(see [plans/phase-2.md](../plans/phase-2.md)); nothing in Phase 2 has been started.
+Current phase: **Phase 2 is COMPLETE. Phase 3 — Structured summary generation
+is next** (see [plans/phase-3.md](../plans/phase-3.md)); nothing in Phase 3 has
+been started.
 
-`make status` reports **Phase 0 PASS, Phase 1 PASS**. Phases 2–12 are red, as
+`make status` reports **Phase 0, 1 and 2 PASS**. Phases 3–12 are red, as
 designed.
 
 All six Phase 1 tasks: `chat`+`message` tables and the async session `421feb8`,
@@ -17,11 +18,19 @@ conversation. `tests/phases/test_phase_1.py` asserts that by actually restarting
 the container — it makes **no model call**, because it runs on every
 `make status`.
 
-Next: Phase 2's four tasks. Its own task list frames it as a refactor —
-"replace the Phase 1 direct call with a call into the graph from the chat
-endpoint" — so the seam it replaces is `stream()` in
-`apps/api/api/routers/chats.py`, and `_working_context` there is what becomes the
-`build_context` node.
+Phase 2 replaced the direct model call with a LangGraph workflow (`29c8be0`).
+A chat request now walks five nodes —
+`validate_input -> build_context -> choose_model -> generate_answer -> persist` —
+and the Postgres checkpointer records each one, so a request can be replayed out
+of storage afterwards. That replay is what `tests/phases/test_phase_2.py`
+asserts.
+
+Next: Phase 3, structured summary generation. Two things there attach to what
+Phase 2 built: the summary graph is a *second* graph (docs/SPEC.md §7 sketches
+it) and it interrupts for human approval — which is the first real use of the
+checkpointer's resumability, and the reason it exists rather than being deferred.
+CLAUDE.md invariant #5 is the one to hold onto: the model may draft a summary, it
+may never promote one.
 
 Phase 0 tasks, for reference: task 1 `1de4a59`, 2 `1a603eb`, 3 `0c56b7f`,
 4 `2b0e933`, 5 `06b9736`, 6 `6132a66`, 7 `600d919`, 8 `e7bed57`, 9 `872bcb5`.
@@ -155,9 +164,13 @@ purges its own chat on each run.
   `schemas/completion.py` (typed request/response — invariant #4), and
   `models/gateway.py`, **the only module in the repo permitted to import a
   provider SDK** (docs/CODE_QUALITY.md's Semgrep rule excludes exactly that
-  path). `graphs/`, `agents/`, `safety/`, `telemetry/`, `retrieval/` are still
-  empty and each arrives with its phase. Deps: openai (as an HTTP client for the
-  OpenAI-*compatible* proxy), pydantic.
+  path). `graphs/` holds the Phase 2 chat workflow: `chat.py` (five nodes,
+  no `database` import — persistence is injected), `messages.py` (LangChain
+  message adapters) and `checkpointer.py` (Postgres, one thread per request).
+  `agents/`, `safety/`, `telemetry/`, `retrieval/` are still empty and each
+  arrives with its phase. Deps: openai (as an HTTP client for the
+  OpenAI-*compatible* proxy), langgraph, langchain-core,
+  langgraph-checkpoint-postgres, pydantic.
 - `infra/litellm/config.yaml` — the three aliases (`learning-fast` and
   `safety-judge` → `openai/gpt-4o-mini`, `learning-deep` → `openai/gpt-4o`), each
   reading `OPENAI_API_KEY` from the environment. **The only place a provider is
