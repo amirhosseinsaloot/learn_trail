@@ -13,14 +13,20 @@ import pytest
 from database.base import Base
 from database.config import DEFAULT_DATABASE_URL, database_url
 
-# Phase 1 registers the conversation aggregate and nothing else. The remaining
-# docs/SPEC.md §17 tables arrive with the phase that introduces their concept, so
-# this is an exact comparison: a table appearing early is a phase violation
-# (CLAUDE.md invariant #6), not a head start.
-EXPECTED_TABLES = frozenset({"chat", "message"})
+# The tables registered so far: the conversation aggregate (Phase 1) and the
+# knowledge aggregate (Phase 3). The remaining docs/SPEC.md §17 tables arrive with
+# the phase that introduces their concept, so this is an exact comparison — a
+# table appearing early is a phase violation (CLAUDE.md invariant #6), not a head
+# start, and adding one is meant to fail this test.
+#
+# LangGraph's checkpoint tables are deliberately absent: the library owns them,
+# they are created by its `setup()`, and `migrations/env.py` filters autogenerate
+# down to the tables in this metadata precisely so Alembic never proposes
+# dropping them.
+EXPECTED_TABLES = frozenset({"chat", "message", "summary_draft", "learning", "learning_revision"})
 
 
-def test_metadata_declares_exactly_the_phase_1_tables() -> None:
+def test_metadata_declares_exactly_the_expected_tables() -> None:
     # Populated by importing `database.models`, which `database/__init__.py` does
     # on package import — the same mechanism migrations/env.py relies on. If that
     # import is ever dropped, this fails rather than autogenerate silently

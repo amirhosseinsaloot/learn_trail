@@ -11,13 +11,15 @@ Two differences from Alembic's stock template, both deliberate:
    to read. Migrations run on a sync connection — psycopg 3 serves both this
    sync dialect and the app's async one (see this package's pyproject.toml).
 
-``target_metadata`` is an empty declarative base's metadata in Phase 0: there
-are no models yet, so autogenerate has nothing to diff (docs/SPEC.md §15).
+3. Autogenerate is restricted to tables this project owns — see
+   :func:`include_name`. From Phase 2 the database also holds LangGraph's
+   checkpoint tables, which the library creates and manages itself.
 """
 
 from logging.config import fileConfig
 
 from alembic import context
+from alembic.runtime.environment import NameFilterParentNames, NameFilterType
 from sqlalchemy import Connection, create_engine, pool
 
 # Imported for its side effect: defining a model class registers its table on
@@ -41,6 +43,32 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+def include_name(
+    name: str | None,
+    type_: NameFilterType,
+    parent_names: NameFilterParentNames,
+) -> bool:
+    """Restrict autogenerate to tables this project actually owns.
+
+    Without this, autogenerate compares the *whole database* against our metadata
+    and proposes dropping anything it does not recognise. As of Phase 2 that means
+    LangGraph's checkpoint tables (`checkpoints`, `checkpoint_writes`,
+    `checkpoint_blobs`, `checkpoint_migrations`), which the library creates and
+    owns via its own `setup()` — see ai_core/graphs/checkpointer.py.
+
+    The failure this prevents is not a nuisance, it is data loss: `alembic check`
+    goes permanently red, and the obvious way to make it green again is to
+    generate the migration it is asking for — which drops every graph execution
+    ever recorded, including any interrupted summary awaiting approval.
+
+    Filtering on our metadata rather than blocklisting LangGraph's table names
+    means any future library that manages its own storage is handled too.
+    """
+    if type_ == "table":
+        return name in target_metadata.tables
+    return True
+
+
 def run_migrations_offline() -> None:
     """Emit SQL to stdout without connecting to a database (``--sql``).
 
@@ -54,6 +82,7 @@ def run_migrations_offline() -> None:
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
         compare_server_default=True,
+        include_name=include_name,
     )
 
     with context.begin_transaction():
@@ -69,6 +98,7 @@ def _run_migrations(connection: Connection) -> None:
         # schema, which Alembic ignores by default.
         compare_type=True,
         compare_server_default=True,
+        include_name=include_name,
     )
 
     with context.begin_transaction():

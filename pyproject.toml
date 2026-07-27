@@ -116,6 +116,22 @@ exclude = [
     '^\.claude/',
 ]
 
+# Guardrails AI ships no py.typed marker and no stubs, so mypy sees every symbol
+# it exports as `Any` — including `Validator`, which our layer-4 validators must
+# subclass. Under `strict` that is two errors (`import-untyped` and
+# "cannot subclass Any") for a dependency we do not control.
+#
+# Scoped to the one module that touches it, rather than relaxed globally: the
+# rest of the repo keeps full strictness, and if Guardrails ever ships stubs this
+# override is the single thing to delete.
+[[tool.mypy.overrides]]
+module = ["guardrails.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["ai_core.safety.summary_validators"]
+disallow_subclassing_any = false
+
 [tool.pydantic-mypy]
 init_forbid_extra = true
 init_typed = true

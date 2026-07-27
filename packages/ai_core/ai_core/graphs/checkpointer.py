@@ -48,8 +48,11 @@ from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 #: too, and the warning in the logs is what says so.
 ALLOWED_CHECKPOINT_TYPES: Final = [
     ("ai_core.graphs.chat", "ChatState"),
+    ("ai_core.graphs.summary", "ReviewDecision"),
+    ("ai_core.graphs.summary", "SummaryState"),
     ("ai_core.models.aliases", "ModelAlias"),
     ("ai_core.schemas.completion", "CompletionResponse"),
+    ("ai_core.schemas.summary", "LearningSummary"),
 ]
 
 #: The checkpointer speaks to psycopg directly, not through SQLAlchemy, so it

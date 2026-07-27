@@ -5,15 +5,32 @@ One module per aggregate, re-exported here so callers write
 lives in. Importing this package is what populates ``Base.metadata``, which is
 why Alembic's env.py imports it explicitly (see migrations/env.py).
 
-Phase 1 ships the conversation aggregate only — `chat` and `message`. The
-remaining tables in docs/SPEC.md §17 arrive with the phase that introduces their
-concept: `summary_draft`/`learning`/`learning_revision` in Phase 3,
-`safety_event` in Phase 4, `model_run` in Phase 5, `evaluation_*` in Phase 6,
-`prompt_version` alongside the prompt lifecycle.
+Two aggregates so far: the conversation (`chat`, `message`, Phase 1) and
+knowledge (`summary_draft`, `learning`, `learning_revision`, Phase 3). The
+remaining docs/SPEC.md §17 tables arrive with the phase that introduces their
+concept: `safety_event` in Phase 4, `model_run` in Phase 5, `evaluation_*` in
+Phase 6, `prompt_version` alongside the prompt lifecycle.
 
 No model here has a `user_id`, and none ever will (CLAUDE.md invariant #1).
 """
 
 from database.models.conversation import Chat, ChatStatus, Message, MessageRole
+from database.models.knowledge import (
+    ChangeSource,
+    DraftStatus,
+    Learning,
+    LearningRevision,
+    SummaryDraft,
+)
 
-__all__ = ["Chat", "ChatStatus", "Message", "MessageRole"]
+__all__ = [
+    "ChangeSource",
+    "Chat",
+    "ChatStatus",
+    "DraftStatus",
+    "Learning",
+    "LearningRevision",
+    "Message",
+    "MessageRole",
+    "SummaryDraft",
+]
