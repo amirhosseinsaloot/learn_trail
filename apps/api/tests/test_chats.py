@@ -24,9 +24,11 @@ from typing import Any
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from langgraph.checkpoint.memory import InMemorySaver
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ai_core.graphs.chat import build_chat_graph
 from api.main import app
 from database.session import engine, session
 
@@ -56,6 +58,12 @@ async def client(anyio_backend: str) -> AsyncIterator[AsyncClient]:
     # they would open their own sessions against the engine, commit for real, and
     # leave rows behind.
     app.dependency_overrides[session] = override_session
+    # The real graph, compiled with an in-memory checkpointer. Phase 2 made the
+    # graph the request path, so a stubbed graph would leave these tests
+    # asserting nothing about how a request is actually served. Postgres
+    # checkpointing is exercised by the Phase 2 exit-criterion test; here the
+    # database is real but the checkpoint store need not be.
+    app.state.chat_graph = build_chat_graph().compile(checkpointer=InMemorySaver())
     try:
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://learntrail.test"
@@ -329,7 +337,7 @@ def _stub_stream(
 ) -> None:
     """Replace the gateway stream with a scripted one."""
     from ai_core import CompletionResponse, FinalChunk, ModelAlias, TokenChunk
-    from api.routers import chats as chats_module
+    from ai_core.graphs import chat as chat_graph_module
 
     async def fake_stream(request: object) -> AsyncIterator[object]:
         for part in parts:
@@ -347,7 +355,9 @@ def _stub_stream(
             )
         )
 
-    monkeypatch.setattr(chats_module, "stream", fake_stream)
+    # Patched on the graph module: `generate_answer` is what calls the gateway
+    # now, so patching the router would replace a name nothing reads.
+    monkeypatch.setattr(chat_graph_module, "stream", fake_stream)
 
 
 def _parse_sse(body: str) -> list[tuple[str, dict[str, object]]]:
@@ -514,7 +524,7 @@ async def test_the_whole_transcript_is_sent_as_context(
     Asserted because it is a *choice*, not an accident: Phase 2 replaces it with
     a `build_context` node, and this test is what will notice.
     """
-    from api.routers import chats as chats_module
+    from ai_core.graphs import chat as chat_graph_module
 
     seen: list[object] = []
 
@@ -533,7 +543,7 @@ async def test_the_whole_transcript_is_sent_as_context(
             )
         )
 
-    monkeypatch.setattr(chats_module, "stream", capture)
+    monkeypatch.setattr(chat_graph_module, "stream", capture)
 
     chat = await _new_chat(client)
     await _ask(client, str(chat["id"]), "first question")
@@ -549,3 +559,52 @@ async def test_the_whole_transcript_is_sent_as_context(
     ]
     # The alias, not a model string — CLAUDE.md invariant #2 at the call site.
     assert last_request.alias.value == "learning-fast"  # type: ignore[attr-defined]
+
+
+async def test_the_context_does_not_double_across_turns(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: threading the graph by chat id silently doubled the context.
+
+    The database owns the transcript, so this handler seeds the graph with the
+    full history on every request. When the checkpointer thread was keyed by chat
+    id alone it already held the previous turns, and `add_messages` appended the
+    freshly-rebuilt copies instead of recognising them — it matches on message
+    id, and these are constructed from rows each time. Turn two sent
+    ["q1", "a1", "q1", "a1", "q2"].
+
+    Nothing errored. The bill just grew, and the model saw a conversation that
+    stuttered. Hence a test that counts, rather than trusting the thread key to
+    stay right.
+    """
+    from ai_core.graphs import chat as chat_graph_module
+
+    seen: list[Any] = []
+
+    async def capture(request: Any) -> AsyncIterator[object]:
+        seen.append(request)
+        from ai_core import CompletionResponse, FinalChunk, ModelAlias, TokenChunk
+
+        yield TokenChunk(text="ok")
+        yield FinalChunk(
+            response=CompletionResponse(
+                alias=ModelAlias.LEARNING_FAST,
+                provider_model="stub",
+                text="ok",
+                input_tokens=1,
+                output_tokens=1,
+                finish_reason="stop",
+            )
+        )
+
+    monkeypatch.setattr(chat_graph_module, "stream", capture)
+
+    chat = await _new_chat(client)
+    for question in ("q1", "q2", "q3"):
+        await _ask(client, str(chat["id"]), question)
+        await client.post(f"/chats/{chat['id']}/answer")
+
+    # Turn N sees exactly the 2N-1 turns that precede it: no repeats, and each
+    # request grows by exactly one question and one answer.
+    assert [len(request.messages) for request in seen] == [1, 3, 5]
+    assert [turn.content for turn in seen[-1].messages] == ["q1", "ok", "q2", "ok", "q3"]

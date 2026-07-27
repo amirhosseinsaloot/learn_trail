@@ -17,23 +17,20 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
+from langchain_core.runnables import RunnableConfig
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload
 
-from ai_core import (
-    ChatTurn,
-    CompletionRequest,
-    GatewayError,
-    ModelAlias,
-    TokenChunk,
-    stream,
-)
+from ai_core import ChatTurn, CompletionResponse, GatewayError, ModelAlias
+from ai_core.graphs.chat import PERSIST_KEY, ChatState, GraphError
+from ai_core.graphs.messages import context_to_langchain
 from api import sse
+from api.graph import chat_graph
 from api.schemas import (
     ChatCreate,
     ChatDetail,
@@ -50,6 +47,12 @@ router = APIRouter(prefix="/chats", tags=["chats"])
 # One alias for the session dependency so every handler's signature stays
 # readable and there is a single place to change how sessions are provided.
 Session = Annotated[AsyncSession, Depends(session)]
+
+# The compiled chat graph, from app.state (api/graph.py). A dependency rather
+# than a module import so a test can substitute one, and so the handler cannot
+# accidentally build its own — compiling per request would open a checkpointer
+# connection pool per request.
+ChatGraph = Annotated[Any, Depends(chat_graph)]
 
 
 async def _load_chat(db: AsyncSession, chat_id: uuid.UUID) -> Chat:
@@ -261,17 +264,24 @@ def _working_context(chat: Chat) -> list[ChatTurn]:
 
 
 @router.post("/{chat_id}/answer")
-async def stream_answer(chat_id: uuid.UUID, db: Session) -> StreamingResponse:
+async def stream_answer(chat_id: uuid.UUID, db: Session, graph: ChatGraph) -> StreamingResponse:
     """Stream the assistant's answer to the conversation so far, then persist it.
 
     The answer half of "send a message" — docs/SPEC.md §6 lists streaming answers
     as its own endpoint, and this is it. `POST /chats/{id}/messages` appends the
     question; this produces the reply.
 
-    Validation happens *before* the response begins. Once a stream is open the
-    status line is already sent, so a 404 or 409 is no longer expressible — the
-    error would have to arrive as an SSE `error` event that a client is free to
-    ignore. Everything that can be checked up front therefore is.
+    **Phase 2 replaced the direct model call here with a graph invocation.** What
+    this handler now does is translate: HTTP in, graph state out, graph events
+    back to SSE. The five steps of the workflow — validate, build context, choose
+    model, generate, persist — live in `ai_core.graphs.chat`, where each is a
+    named node the checkpointer records.
+
+    The HTTP-level checks below survive that move on purpose. They are not a
+    duplicate of the graph's `validate_input`: these exist to produce *status
+    codes*, and a status code can only be sent before the stream opens. The graph
+    node guards the graph's own preconditions for any caller, including ones that
+    never came through HTTP.
 
     Consume it with `fetch` + a ReadableStream, not `EventSource`: EventSource
     only issues GET requests, and this endpoint is a POST because it creates a
@@ -294,53 +304,91 @@ async def stream_answer(chat_id: uuid.UUID, db: Session) -> StreamingResponse:
     context = _working_context(chat)
     next_position = await _next_sequence_number(db, chat.id)
 
+    # The graph's `persist` node calls this. Injecting it rather than letting
+    # `ai_core` import `database` keeps every node a function of its inputs, so
+    # the whole workflow can be exercised with no Postgres — and it keeps the
+    # request's session, which the graph knows nothing about, in the layer that
+    # owns it.
+    async def persist_answer(answer: CompletionResponse) -> str:
+        message = Message(
+            chat_id=chat.id,
+            role=MessageRole.ASSISTANT,
+            content=answer.text,
+            sequence_number=next_position,
+        )
+        db.add(message)
+        await db.execute(
+            update(Chat).where(Chat.id == chat.id).values(updated_at=func.clock_timestamp())
+        )
+        await db.commit()
+        return str(message.id)
+
     async def events() -> AsyncIterator[str]:
-        request = CompletionRequest(alias=ModelAlias.LEARNING_FAST, messages=context)
+        state = ChatState(chat_id=str(chat.id), messages=context_to_langchain(context))
+        config: RunnableConfig = {
+            "configurable": {
+                # One thread per *request*, not per conversation — the position
+                # in the transcript makes it unique.
+                #
+                # Threading by chat id looks natural and is wrong here, in a way
+                # that costs money rather than erroring. The database is the
+                # transcript's source of truth, so this handler seeds the graph
+                # with the full history every time; if the thread already held
+                # the previous turns, `add_messages` would append the fresh
+                # copies rather than recognise them (it matches on message id,
+                # and these are rebuilt from rows each request). The context
+                # would double every turn, silently.
+                #
+                # Per-request threads also match the Phase 2 criterion more
+                # closely: each chat request becomes its own inspectable
+                # execution rather than one ever-growing thread.
+                "thread_id": f"{chat.id}:{next_position}",
+                PERSIST_KEY: persist_answer,
+            }
+        }
+
         try:
-            async for chunk in stream(request):
-                if isinstance(chunk, TokenChunk):
-                    yield sse.event("token", chunk)
-                    continue
+            # `stream_mode=["custom"]` is what carries tokens: node-level updates
+            # only arrive *after* a node returns, so without the custom channel a
+            # streamed answer would land as one lump when `generate_answer`
+            # finished. The nodes emit on it via `get_stream_writer()`.
+            async for mode, payload in graph.astream(state, config=config, stream_mode=["custom"]):
+                if mode == "custom" and "token" in payload:
+                    yield sse.event("token", {"text": payload["token"]})
 
-                # A FinalChunk is the only signal that the model finished rather
-                # than the connection dying, so persistence hangs off it and
-                # nothing else. A stream that ends without one leaves the chat
-                # exactly as it was — better a missing answer than a truncated one
-                # recorded as complete, since from Phase 3 these become Learnings.
-                answer = chunk.response
-                if answer.is_empty:
-                    yield sse.event("error", {"detail": "the model returned an empty answer"})
-                    return
+            # Read the outcome from the graph rather than from a variable the
+            # loop happened to set: the checkpointed state is the record of what
+            # ran, and reading it here is the same thing the exit-criterion test
+            # inspects.
+            final = (await graph.aget_state(config)).values
+            answer: CompletionResponse | None = final.get("answer")
+            message_id: str | None = final.get("persisted_message_id")
+            if answer is None or message_id is None:
+                yield sse.event("error", {"detail": "the graph did not produce a stored answer"})
+                return
 
-                message = Message(
-                    chat_id=chat.id,
-                    role=MessageRole.ASSISTANT,
-                    content=answer.text,
-                    sequence_number=next_position,
-                )
-                db.add(message)
-                await db.execute(
-                    update(Chat).where(Chat.id == chat.id).values(updated_at=func.clock_timestamp())
-                )
-                await db.commit()
-
-                yield sse.event(
-                    "done",
-                    {
-                        "message_id": str(message.id),
-                        "sequence_number": message.sequence_number,
-                        # Surfaced rather than hidden: a truncated answer is not a
-                        # complete one, and the client should be able to say so.
-                        "truncated": answer.was_truncated,
-                        # The alias is the app's vocabulary; provider_model is what
-                        # actually served it. Phase 5 persists both in `model_run`.
-                        "alias": answer.alias.value,
-                        "provider_model": answer.provider_model,
-                        "input_tokens": answer.input_tokens,
-                        "output_tokens": answer.output_tokens,
-                    },
-                )
-        except GatewayError as exc:
+            yield sse.event(
+                "done",
+                {
+                    "message_id": message_id,
+                    "sequence_number": next_position,
+                    # Surfaced rather than hidden: a truncated answer is not a
+                    # complete one, and the client should be able to say so.
+                    "truncated": answer.was_truncated,
+                    # The alias is the app's vocabulary; provider_model is what
+                    # actually served it. Phase 5 persists both in `model_run`.
+                    #
+                    # `ModelAlias(...)` because a value read back out of a
+                    # checkpoint is a plain string: msgpack restores the value,
+                    # not the enum class. Coercing here keeps the wire payload
+                    # identical to Phase 1's.
+                    "alias": ModelAlias(answer.alias).value,
+                    "provider_model": answer.provider_model,
+                    "input_tokens": answer.input_tokens,
+                    "output_tokens": answer.output_tokens,
+                },
+            )
+        except (GatewayError, GraphError) as exc:
             # The stream is already open, so this cannot be a 502. An `error`
             # event is the only way left to tell the client, and it is why the
             # client must treat "stream ended without `done`" as a failure.

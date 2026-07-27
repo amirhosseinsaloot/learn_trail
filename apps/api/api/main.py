@@ -10,12 +10,17 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.graph import lifespan
 from api.routers import chats
 
 app = FastAPI(
     title="LearnTrail API",
     version="0.1.0",
     summary="Single-user AI learning workspace. No auth, no users, by design.",
+    # Compiles the chat graph and opens its checkpointer for the process
+    # (api/graph.py). From Phase 2 the application does not start without a
+    # working graph — which is the point: the graph *is* the request path.
+    lifespan=lifespan,
 )
 
 # The browser origin the chat page is served from. A list of one, from the
