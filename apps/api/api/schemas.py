@@ -19,11 +19,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from database.models import ChatStatus, MessageRole
+from database.models import ChangeSource, ChatStatus, DraftStatus, MessageRole
 
 # Trimmed and non-empty, matching the `ck_chat_title_not_blank` CHECK constraint
 # on the column. Validated here as well as in the database because a 422 naming
@@ -105,3 +105,91 @@ class ChatDetail(ChatRead):
     """
 
     messages: list[MessageRead]
+
+
+# --- summaries and learnings (Phase 3) ----------------------------------------
+
+
+class SummaryContent(BaseModel):
+    """The editable body of a draft or a Learning.
+
+    A separate type from `ai_core.schemas.summary.LearningSummary` on purpose,
+    even though the fields match. That one is what a *model* must produce and is
+    validated on the way out of the model; this one is what a *person* may submit
+    when they edit. Sharing the type would mean either loosening the model's
+    contract or imposing generation-time rules on a human's edit — and a user who
+    wants to delete every open question from their own Learning is entitled to.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: ChatTitle
+    overview: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    key_concepts: list[str] = Field(default_factory=list)
+    distinctions: list[str] = Field(default_factory=list)
+    examples: list[str] = Field(default_factory=list)
+    open_questions: list[str] = Field(default_factory=list)
+    suggested_tags: list[str] = Field(default_factory=list)
+    uncertainty_notes: list[str] = Field(default_factory=list)
+
+
+class SummaryDraftRead(BaseModel):
+    """A draft awaiting review. Model output, not knowledge."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    chat_id: uuid.UUID
+    title: str
+    structured_content: dict[str, Any]
+    status: DraftStatus
+    #: Which prompt version produced it (docs/SPEC.md §12).
+    prompt_version: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class LearningRevisionRead(BaseModel):
+    """One version of a Learning's content."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    revision_number: int
+    structured_content: dict[str, Any]
+    #: `model` for the approved draft, `human` for a later edit — the record of
+    #: what was authored versus merely accepted.
+    change_source: ChangeSource
+    note: str | None
+    created_at: datetime
+
+
+class LearningRead(BaseModel):
+    """An approved Learning, without its history — the library list view."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    source_chat_id: uuid.UUID | None
+    title: str
+    structured_content: dict[str, Any]
+    approved_at: datetime
+    created_at: datetime
+    updated_at: datetime
+    deleted_at: datetime | None
+
+
+class LearningDetail(LearningRead):
+    """An approved Learning with its full revision history."""
+
+    revisions: list[LearningRevisionRead]
+
+
+class LearningEdit(BaseModel):
+    """A human edit to an approved Learning. Writes a new revision."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    content: SummaryContent
+    #: Optional note about what changed. Free text — categories would be guessing.
+    note: str | None = Field(default=None, max_length=500)

@@ -29,6 +29,16 @@ CHAT_OPERATIONS = {
     # Sending a message and streaming the answer are separate endpoints, as
     # docs/SPEC.md §6 lists them.
     "/chats/{chat_id}/answer": ["post"],
+    # Phase 3: the approval gate. Note there is no endpoint that creates a
+    # `learning` directly — the only route to one is approving a draft, which is
+    # CLAUDE.md invariant #5 visible in the URL space itself.
+    "/chats/{chat_id}/summary": ["get", "post"],
+    "/summaries/{draft_id}": ["patch"],
+    "/summaries/{draft_id}/approve": ["post"],
+    "/summaries/{draft_id}/reject": ["post"],
+    "/learnings": ["get"],
+    "/learnings/{learning_id}": ["delete", "get", "patch"],
+    "/learnings/{learning_id}/restore": ["post"],
 }
 
 

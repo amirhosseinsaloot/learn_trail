@@ -20,10 +20,12 @@ from fastapi import FastAPI, Request
 
 from ai_core.graphs.chat import build_chat_graph
 from ai_core.graphs.checkpointer import open_checkpointer
+from ai_core.graphs.summary import build_summary_graph
 
 #: Attribute name on `app.state`. One constant so the writer and the reader
 #: cannot disagree about it.
 GRAPH_ATTRIBUTE = "chat_graph"
+SUMMARY_GRAPH_ATTRIBUTE = "summary_graph"
 
 
 @asynccontextmanager
@@ -38,6 +40,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     async with open_checkpointer() as checkpointer:
         await checkpointer.setup()
         setattr(app.state, GRAPH_ATTRIBUTE, build_chat_graph().compile(checkpointer=checkpointer))
+        # The summary graph shares the checkpointer, and needs it more: its
+        # `await_approval` interrupt has nowhere to keep state without one, so an
+        # approval could not survive a restart.
+        setattr(
+            app.state,
+            SUMMARY_GRAPH_ATTRIBUTE,
+            build_summary_graph().compile(checkpointer=checkpointer),
+        )
         yield
 
 
@@ -54,5 +64,15 @@ def chat_graph(request: Request) -> Any:
         raise RuntimeError(
             "the chat graph is not compiled; the application lifespan did not run. "
             "A test client must run lifespan or set app.state.chat_graph itself."
+        )
+    return graph
+
+
+def summary_graph(request: Request) -> Any:
+    """The compiled summary graph for this request."""
+    graph = getattr(request.app.state, SUMMARY_GRAPH_ATTRIBUTE, None)
+    if graph is None:  # pragma: no cover - only reachable if lifespan did not run
+        raise RuntimeError(
+            "the summary graph is not compiled; the application lifespan did not run."
         )
     return graph

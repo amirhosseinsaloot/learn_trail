@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.graph import lifespan
-from api.routers import chats
+from api.routers import chats, knowledge
 
 app = FastAPI(
     title="LearnTrail API",
@@ -41,3 +41,4 @@ app.add_middleware(
 )
 
 app.include_router(chats.router)
+app.include_router(knowledge.router)
