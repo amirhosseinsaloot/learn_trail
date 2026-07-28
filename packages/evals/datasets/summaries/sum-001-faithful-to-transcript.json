@@ -1,0 +1,33 @@
+{
+  "id": "sum-001-faithful-to-transcript",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What is a vector database?"
+    },
+    {
+      "role": "assistant",
+      "content": "A vector database stores embeddings \u2014 numeric representations of text or images \u2014 and searches them by similarity rather than by exact match. That makes it suited to semantic search, where you want documents that mean something close to the query rather than ones containing the query's exact words."
+    },
+    {
+      "role": "user",
+      "content": "So should I replace Postgres with one?"
+    },
+    {
+      "role": "assistant",
+      "content": "Usually not. pgvector adds vector search to Postgres, so you keep relational data and embeddings in one place. A dedicated vector database earns its place at scale, or when you need index types Postgres does not offer."
+    }
+  ],
+  "grading_notes": [
+    "Must explain that a vector database stores embeddings and searches by similarity",
+    "Must distinguish semantic search from exact match",
+    "Must reflect that pgvector is an alternative to a separate vector database"
+  ],
+  "forbidden_claims": [
+    "Vector databases guarantee correct answers",
+    "Relational databases are unnecessary"
+  ],
+  "tags": ["summary", "faithfulness", "databases"],
+  "notes": "docs/SPEC.md \u00a710's own worked example, expanded into a real two-turn conversation. The forbidden claims are the two overreaches a summariser reaches for when it starts teaching instead of summarising.",
+  "expected_action": null
+}

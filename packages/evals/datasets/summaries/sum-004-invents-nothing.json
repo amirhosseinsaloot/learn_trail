@@ -1,0 +1,24 @@
+{
+  "id": "sum-004-invents-nothing",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What is a write-ahead log?"
+    },
+    {
+      "role": "assistant",
+      "content": "A write-ahead log records a change before it is applied to the data pages, so a crash can be recovered by replaying the log. That is what makes durability possible without flushing every page on every commit."
+    }
+  ],
+  "grading_notes": [
+    "Must explain that changes are logged before being applied, and that this enables crash recovery"
+  ],
+  "forbidden_claims": [
+    "write-ahead logging was invented by",
+    "replication",
+    "point-in-time recovery"
+  ],
+  "tags": ["summary", "hallucination"],
+  "notes": "A short conversation, so there is little to summarise and maximum temptation to pad. The forbidden claims are the true-but-absent facts a model reaches for \u2014 being true is what makes them dangerous, because a reviewer will not catch them.",
+  "expected_action": null
+}

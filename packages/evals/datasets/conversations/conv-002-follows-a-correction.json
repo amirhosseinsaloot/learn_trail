@@ -1,0 +1,25 @@
+{
+  "id": "conv-002-follows-a-correction",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Is Postgres a NoSQL database?"
+    },
+    {
+      "role": "assistant",
+      "content": "Yes, Postgres is a NoSQL document store."
+    },
+    {
+      "role": "user",
+      "content": "No, that's wrong. Postgres is relational. Given that, does it support JSON at all?"
+    }
+  ],
+  "grading_notes": [
+    "Must accept the correction rather than repeating that Postgres is NoSQL",
+    "Must answer the actual question: yes, Postgres supports JSON and JSONB"
+  ],
+  "forbidden_claims": ["Postgres is a NoSQL database", "Postgres does not support JSON"],
+  "tags": ["multi-turn", "correction"],
+  "notes": "docs/SPEC.md \u00a79 names 'does it respond appropriately to corrections' as a conversation-level property. The planted wrong assistant turn is the point \u2014 a model that ignores the correction will restate it.",
+  "expected_action": null
+}

@@ -1,0 +1,14 @@
+{
+  "id": "conv-005-respects-requested-depth",
+  "messages": [
+    {
+      "role": "user",
+      "content": "In one sentence only: what is a foreign key?"
+    }
+  ],
+  "grading_notes": ["Must be a single sentence", "Must say it references a key in another table"],
+  "forbidden_claims": [],
+  "tags": ["instruction-following", "depth"],
+  "notes": "docs/SPEC.md \u00a79: 'does it maintain the requested explanation depth'. Cheap to grade and it catches prompt changes that make answers verbose.",
+  "expected_action": null
+}

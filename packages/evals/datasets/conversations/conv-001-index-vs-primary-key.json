@@ -1,0 +1,18 @@
+{
+  "id": "conv-001-index-vs-primary-key",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What is the difference between a database index and a primary key?"
+    }
+  ],
+  "grading_notes": [
+    "Must say a primary key uniquely identifies a row",
+    "Must say a primary key implies or creates a unique index",
+    "Must say an index is a separate structure that speeds up lookups"
+  ],
+  "forbidden_claims": ["Every index is a primary key"],
+  "tags": ["databases", "definitions"],
+  "notes": "The baseline case: a plain factual question with a settled answer. If this one fails, the problem is the model or the gateway, not the prompt.",
+  "expected_action": null
+}

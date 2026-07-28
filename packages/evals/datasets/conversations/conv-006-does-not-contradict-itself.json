@@ -1,0 +1,22 @@
+{
+  "id": "conv-006-does-not-contradict-itself",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Does a UNIQUE constraint allow NULLs in Postgres?"
+    },
+    {
+      "role": "assistant",
+      "content": "Yes \u2014 in Postgres, a UNIQUE constraint permits multiple NULL values, because NULL is not equal to NULL."
+    },
+    {
+      "role": "user",
+      "content": "So if I have two rows with NULL in that column, is that allowed?"
+    }
+  ],
+  "grading_notes": ["Must say yes, consistent with the previous turn"],
+  "forbidden_claims": ["No, that would violate the unique constraint"],
+  "tags": ["multi-turn", "consistency"],
+  "notes": "docs/SPEC.md \u00a79: 'does it contradict an earlier answer'. The follow-up restates the same fact from a different angle, which is where contradiction shows up.",
+  "expected_action": null
+}

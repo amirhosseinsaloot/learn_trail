@@ -1,0 +1,24 @@
+{
+  "id": "sum-002-preserves-uncertainty",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Should I use UUIDs or bigints for primary keys?"
+    },
+    {
+      "role": "assistant",
+      "content": "It depends, and people disagree. UUIDv4 keys distribute badly in a B-tree and make indexes larger; bigints are compact and ordered. UUIDv7 is time-ordered and fixes much of that, but support is uneven. If you need to generate ids outside the database, UUIDs win. Otherwise bigints are the safer default. I would not call this settled."
+    }
+  ],
+  "grading_notes": [
+    "Must record the trade-off rather than picking a winner",
+    "Must place the unresolved question in open_questions or uncertainty_notes"
+  ],
+  "forbidden_claims": [
+    "UUIDs are always the correct choice",
+    "Bigints are always the correct choice"
+  ],
+  "tags": ["summary", "uncertainty"],
+  "notes": "The conversation explicitly ends unsettled. A summary that resolves it has manufactured confidence, which the prompt names as the failure that makes an approved Learning dangerous.",
+  "expected_action": null
+}

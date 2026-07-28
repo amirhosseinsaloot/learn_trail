@@ -11,6 +11,10 @@ dependencies = [
     "learntrail-ai-core",
     "learntrail-api",
     "learntrail-database",
+    # Without the `judges` extra: DeepEval is only needed to *run* the suite, and
+    # the gate that enforces Phase 6's criterion imports none of it. Install it
+    # with `uv sync --all-groups --extra judges`, or `make evals` does it for you.
+    "learntrail-evals",
 ]
 
 # Root is an environment/tooling project, not an installable distribution:
@@ -19,17 +23,18 @@ dependencies = [
 [tool.uv]
 package = false
 
-# Members are listed explicitly, not globbed: apps/web is a pnpm project and
-# packages/evals is still .gitkeep-only, and uv errors on a member directory with
-# no pyproject.toml. A package joins this list in the phase that introduces it —
-# ai_core arrived in Phase 1 with the gateway client, evals lands in Phase 6.
+# Members are listed explicitly, not globbed: apps/web is a pnpm project, and uv
+# errors on a member directory with no pyproject.toml. A package joins this list
+# in the phase that introduces it — ai_core arrived in Phase 1 with the gateway
+# client, evals in Phase 6 with the evaluation suite.
 [tool.uv.workspace]
-members = ["apps/api", "packages/ai_core", "packages/database"]
+members = ["apps/api", "packages/ai_core", "packages/database", "packages/evals"]
 
 [tool.uv.sources]
 learntrail-ai-core = { workspace = true }
 learntrail-api = { workspace = true }
 learntrail-database = { workspace = true }
+learntrail-evals = { workspace = true }
 
 # Tier 1 Python tooling, plus the Tier 2 additions each phase actually uses
 # (docs/CODE_QUALITY.md). Still deferred: respx, testcontainers, pytest-cov,

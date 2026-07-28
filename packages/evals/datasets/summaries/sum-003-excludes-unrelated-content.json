@@ -1,0 +1,26 @@
+{
+  "id": "sum-003-excludes-unrelated-content",
+  "messages": [
+    {
+      "role": "user",
+      "content": "How does a B-tree index work?"
+    },
+    {
+      "role": "assistant",
+      "content": "A B-tree keeps keys sorted in a balanced tree, so a lookup walks from the root to a leaf in logarithmic time. Range scans are cheap because the leaves are linked in order."
+    },
+    {
+      "role": "user",
+      "content": "Unrelated, but do you know any good pizza recipes?"
+    },
+    {
+      "role": "assistant",
+      "content": "I can help with that another time \u2014 let's stay on indexes for now."
+    }
+  ],
+  "grading_notes": ["Must summarise the B-tree explanation"],
+  "forbidden_claims": ["pizza", "recipe", "dough"],
+  "tags": ["summary", "relevance"],
+  "notes": "A deliberate derail. A summariser that includes the pizza exchange is summarising the transcript rather than the learning, and the distinction matters because the output becomes a knowledge library entry.",
+  "expected_action": null
+}

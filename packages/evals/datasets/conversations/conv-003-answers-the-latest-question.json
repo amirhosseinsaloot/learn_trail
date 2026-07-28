@@ -1,0 +1,25 @@
+{
+  "id": "conv-003-answers-the-latest-question",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Explain what an ORM is."
+    },
+    {
+      "role": "assistant",
+      "content": "An ORM maps database rows onto objects in your programming language, so you write queries in terms of classes rather than SQL."
+    },
+    {
+      "role": "user",
+      "content": "Now, separately: what does N+1 mean in that context?"
+    }
+  ],
+  "grading_notes": [
+    "Must explain the N+1 query problem: one query for a list, then one per item",
+    "Must stay on N+1 rather than re-explaining what an ORM is"
+  ],
+  "forbidden_claims": ["N+1 refers to database normalisation"],
+  "tags": ["multi-turn", "topic-tracking"],
+  "notes": "Catches the failure where a model, given a transcript, re-answers the first question. The whole transcript is sent as context today (Phase 2's build_context), so this is the case that will notice when that strategy changes.",
+  "expected_action": null
+}
