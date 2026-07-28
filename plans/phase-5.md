@@ -19,7 +19,11 @@ names, made observable. That span list is an implementation choice, not the crit
 
 ## Tasks
 
-- [ ] Deploy Phoenix and an OTel collector in docker-compose.yml (owner: `infra-devops`) — commit: `____`
+- [ ] Deploy Phoenix in docker-compose.yml (owner: `infra-devops`) — commit: `____`
+      The standalone OTel collector this task originally named was dropped; see
+      [ADR 0002](../docs/decisions/0002-no-otel-collector.md). SPEC §6's service
+      list does not include one, and vendor-neutrality comes from instrumenting
+      with the OTel SDK rather than from running a forwarder.
 - [ ] OpenTelemetry + OpenInference instrumentation on graph nodes, guardrail checks, model calls (owner: `ai-orchestration`) — commit: `____`
 - [ ] Record trace_id, prompt_version, model_alias, tokens, cost, latency onto model_run (owner: `backend-api`) — commit: `____`
 - [ ] Trace-link UI from a chat/message back to its Phoenix trace (owner: `frontend-web`) — commit: `____`

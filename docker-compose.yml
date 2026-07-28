@@ -1,15 +1,21 @@
 # LearnTrail local development stack (docs/SPEC.md §6).
 #
-# AS OF PHASE 1 THIS FILE DEFINES FOUR SERVICES:
-#   postgres, backend, frontend (Phase 0) + litellm (Phase 1).
+# AS OF PHASE 5 THIS FILE DEFINES FIVE SERVICES:
+#   postgres, backend, frontend (Phase 0) + litellm (Phase 1) + phoenix (Phase 5).
 #
-# SPEC §6 lists five services plus an optional local model runtime; that is the
-# END STATE, not today. CLAUDE.md invariant #6 ("one new AI concept per phase")
-# means a service joins this file in the phase that introduces its concept:
+# That is SPEC §6's list in full, minus the optional local model runtime.
+# CLAUDE.md invariant #6 ("one new AI concept per phase") means a service joins
+# this file in the phase that introduces its concept:
 #
 #   LiteLLM Proxy .................. Phase 1  <- present
-#   Phoenix + OTel collector ....... Phase 5
+#   Phoenix ........................ Phase 5  <- present
 #   Local model runtime (optional).. Phase 11
+#
+# There is deliberately NO standalone OTel collector, though plans/phase-5.md
+# named one. See docs/decisions/0002-no-otel-collector.md: Phoenix speaks OTLP
+# natively, and vendor-neutrality is a property of instrumenting with the OTel
+# SDK rather than of running a forwarder. A collector earns its place when there
+# is a second backend to fan out to.
 #
 # Adding one early is a phase violation, not a head start. Nothing else belongs
 # here either — no pgAdmin, no redis.
@@ -101,6 +107,11 @@ services:
       # this network. Phase 10 replaces it with per-caller virtual keys when
       # routing and budgets arrive.
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-local-dev-change-me}
+      # Standard OTel variables, not Phoenix-specific ones. Everything the app
+      # reads is vendor-neutral, so pointing this at Jaeger, Langfuse or an
+      # actual collector is a one-line change here and nothing in Python.
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://phoenix:6006
+      OTEL_SERVICE_NAME: learntrail-api
       PYTHONUNBUFFERED: "1"
     ports:
       - "8000:8000"
@@ -122,6 +133,13 @@ services:
         # Phase 1 request path run from this container, and starting before
         # initdb finishes is exactly the race pg_isready above guards.
         condition: service_healthy
+      phoenix:
+        # `service_started`, NOT `service_healthy`. Tracing must never be able to
+        # stop the product: the exporter drops spans when the collector is
+        # unreachable and the request still succeeds, so waiting for Phoenix to
+        # be healthy would buy nothing and would make an observability outage
+        # into an application outage.
+        condition: service_started
     healthcheck:
       # FastAPI's built-in schema route. apps/api exposes no application
       # routes in Phase 0 by design, and plans/phase-0.md explicitly rules out
@@ -155,6 +173,11 @@ services:
     environment:
       NODE_ENV: development
       NEXT_TELEMETRY_DISABLED: "1"
+      # Where the *browser* reaches Phoenix, so a message can link to its trace.
+      # `localhost`, not the compose service name: this value is baked into the
+      # page and resolved by the user's browser, which is not on this network.
+      # A URL, not a credential — nothing here weakens CLAUDE.md invariant #3.
+      NEXT_PUBLIC_PHOENIX_URL: http://localhost:6006
       # Poll for file changes: inotify events do not cross a Docker bind mount
       # reliably on every host (notably Windows/macOS), and a dev server that
       # silently stops hot-reloading is worse than a little polling CPU.
@@ -242,7 +265,54 @@ services:
       retries: 6
     restart: unless-stopped
 
+  # ---------------------------------------------------------------------------
+  # Phoenix — the trace backend (Phase 5, docs/SPEC.md §11).
+  #
+  # Joins in this phase because this is the phase that introduces tracing. It
+  # receives OTLP over HTTP on 6006, the same port that serves its UI.
+  #
+  # It holds no credential and calls no provider: spans arrive from the backend
+  # and stop here. What it *does* hold is prompts and answers, which is why
+  # SPEC §11 says not to put secrets in traces — the safety pipeline's PII
+  # findings are recorded as categories, never values, for exactly this reason.
+  #
+  # Storage is its own volume (SQLite, Phoenix's default) rather than the app's
+  # Postgres. Sharing the database would mean Phoenix creating and migrating its
+  # own tables inside ours, which the Alembic autogenerate filter would then have
+  # to keep ignoring forever. Traces are not application data.
+  # ---------------------------------------------------------------------------
+  phoenix:
+    image: arizephoenix/phoenix:version-19.9.0
+    ports:
+      # UI and OTLP/HTTP on one port. Bound to loopback like the gateway: a
+      # trace store holds every question asked and every answer given, which is
+      # not something to expose to the local network by accident.
+      - "127.0.0.1:6006:6006"
+    environment:
+      # Where Phoenix keeps its SQLite database inside the container; the volume
+      # below is mounted at exactly this path.
+      PHOENIX_WORKING_DIR: /phoenix
+    volumes:
+      - phoenix_data:/phoenix
+    healthcheck:
+      # Phoenix's own readiness route. `python` is in this image; curl is not
+      # guaranteed to be — the same reasoning as the litellm probe above.
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request as u; u.urlopen('http://127.0.0.1:6006/healthz', timeout=4).read()
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 6
+    restart: unless-stopped
+
 volumes:
   # Named, so `docker compose down` (without -v) keeps the database and
   # `docker compose down -v` is the explicit "throw the data away" gesture.
   postgres_data:
+  # Traces get the same treatment, and for the same reason: they are the record
+  # of what the system did, and losing them on a routine `down` would make the
+  # observability backend useless the moment you most want it.
+  phoenix_data:

@@ -27,7 +27,7 @@ COMPOSE_FILE = REPO_ROOT / "docker-compose.yml"
 # criterion — every service healthy — is unchanged by the addition; it simply
 # now covers four services, which is why the name below is no longer accurate
 # and the comment says so rather than pretending otherwise.
-PHASE_0_SERVICES = frozenset({"postgres", "backend", "frontend", "litellm"})
+PHASE_0_SERVICES = frozenset({"postgres", "backend", "frontend", "litellm", "phoenix"})
 
 # Distinguishing the two failure modes is the whole point of the messages below
 # (plans/phase-0.md, "Phase test"): "the stack is not running" is an environment
