@@ -125,7 +125,7 @@ exclude = [
 # rest of the repo keeps full strictness, and if Guardrails ever ships stubs this
 # override is the single thing to delete.
 [[tool.mypy.overrides]]
-module = ["guardrails.*"]
+module = ["guardrails.*", "nemoguardrails.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
