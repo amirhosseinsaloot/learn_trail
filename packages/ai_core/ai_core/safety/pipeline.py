@@ -38,6 +38,7 @@ from nemoguardrails.rails.llm.options import (
 from ai_core.models.gateway import gateway_key, gateway_url
 from ai_core.safety.decisions import SafetyAction, SafetyDecision, SafetyOutcome, SafetyStage
 from ai_core.safety.pii import describe, find_pii
+from ai_core.telemetry import Attr, span
 
 #: Bumped whenever `rails/vN.yml` changes. Recorded on every `safety_event`, so a
 #: decision can always be traced to the rules that produced it.
@@ -106,7 +107,18 @@ def _rail_options(*, stage: SafetyStage) -> GenerationOptions:
 
 
 async def _run_rails(messages: list[dict[str, str]], stage: SafetyStage) -> SafetyDecision:
-    """Ask NeMo whether this interaction may proceed."""
+    """Ask NeMo whether this interaction may proceed.
+
+    Its own span, unlike the size and PII checks: this one is a *model call* on
+    the `safety-judge` alias, and it is the only part of a guardrail stage that
+    costs money or takes measurable time. A trace that showed `input_guardrails`
+    as one 900ms block would leave "why was that slow" unanswerable.
+    """
+    with span(POLICY_RAILS, {Attr.MODEL_ALIAS: "safety-judge", Attr.SPAN_KIND: "GUARDRAIL"}):
+        return await _rails_verdict(messages, stage)
+
+
+async def _rails_verdict(messages: list[dict[str, str]], stage: SafetyStage) -> SafetyDecision:
     try:
         result: Any = await _rails().generate_async(
             messages=messages, options=_rail_options(stage=stage)

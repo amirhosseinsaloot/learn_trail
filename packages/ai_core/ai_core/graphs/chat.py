@@ -37,6 +37,7 @@ function of its inputs, which is most of why the criterion is testable at all.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from time import perf_counter
 from typing import Annotated, Any, Final
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
@@ -44,6 +45,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
+from opentelemetry.trace import Span
 from pydantic import BaseModel, Field
 
 from ai_core.graphs.messages import context_from_langchain
@@ -52,6 +54,8 @@ from ai_core.models.gateway import stream
 from ai_core.safety.decisions import SafetyOutcome, SafetyStage
 from ai_core.safety.pipeline import check_input, check_output
 from ai_core.schemas.completion import CompletionRequest, CompletionResponse, FinalChunk, TokenChunk
+from ai_core.telemetry import Attr, span
+from ai_core.telemetry.spans import SPAN_FOR_NODE
 
 #: Key under which the caller supplies the persistence callable (see module
 #: docstring). Injected through `config["configurable"]` — LangGraph's standard
@@ -147,6 +151,36 @@ async def validate_input(state: ChatState) -> dict[str, Any]:
     return {}
 
 
+def _describe_safety(active: Span, outcome: SafetyOutcome) -> None:
+    """Put a safety verdict on its span.
+
+    The decision, not the content. Categories say *what kind* of concern was
+    found and never what matched it — `find_pii` returns categories for exactly
+    this reason, and docs/SPEC.md §11 says not to put sensitive content in
+    traces. A span that quoted the API key it found would have copied the secret
+    into a third place, after the audit row declined to be the second.
+    """
+    active.set_attributes(
+        {
+            Attr.SAFETY_ACTION: outcome.action.value,
+            Attr.SAFETY_BLOCKED: outcome.blocks,
+            Attr.SAFETY_CATEGORIES: outcome.categories,
+        }
+    )
+    for decision in outcome.decisions:
+        # One event per check, so a trace shows that three policies ran and which
+        # one objected — the same thing `safety_event` records, visible without
+        # leaving the trace.
+        active.add_event(
+            decision.policy_name,
+            {
+                Attr.SAFETY_ACTION: decision.action.value,
+                Attr.SAFETY_POLICY_VERSION: decision.policy_version,
+                Attr.SAFETY_CATEGORIES: decision.categories,
+            },
+        )
+
+
 async def _record(config: RunnableConfig, outcome: SafetyOutcome) -> None:
     """Hand an outcome to the caller's recorder, if one was injected.
 
@@ -170,7 +204,9 @@ async def input_safety_check(state: ChatState, config: RunnableConfig) -> dict[s
     time this runs and needs to be told why nothing will follow.
     """
     question = state.messages[-1].text if state.messages else ""
-    outcome = await check_input(question)
+    with span(SPAN_FOR_NODE["input_safety_check"], {Attr.CHAT_ID: state.chat_id}) as active:
+        outcome = await check_input(question)
+        _describe_safety(active, outcome)
     await _record(config, outcome)
 
     if outcome.blocks or outcome.warnings:
@@ -202,7 +238,13 @@ async def build_context(state: ChatState) -> dict[str, Any]:
     where each of them lands. Approved Learnings become part of this selection in
     Phase 8.
     """
-    return {"context": list(state.messages)}
+    context = list(state.messages)
+    with span(SPAN_FOR_NODE["build_context"]) as active:
+        # The count, not the content. The messages are already on the model-call
+        # span through OpenInference's conventions, and repeating a transcript on
+        # every span would multiply the trace's size to say nothing new.
+        active.set_attribute(Attr.CONTEXT_MESSAGES, len(context))
+    return {"context": context}
 
 
 async def choose_model(state: ChatState) -> dict[str, Any]:
@@ -231,11 +273,36 @@ async def generate_answer(state: ChatState) -> dict[str, Any]:
     request = CompletionRequest(alias=state.alias, messages=context_from_langchain(state.context))
 
     answer: CompletionResponse | None = None
-    async for chunk in stream(request):
-        if isinstance(chunk, TokenChunk):
-            writer({"token": chunk.text})
-        elif isinstance(chunk, FinalChunk):
-            answer = chunk.response
+    with span(
+        SPAN_FOR_NODE["generate_answer"],
+        {
+            Attr.SPAN_KIND: "LLM",
+            Attr.MODEL_ALIAS: state.alias.value,
+            Attr.CHAT_ID: state.chat_id,
+        },
+    ) as active:
+        started = perf_counter()
+        first_token_at: float | None = None
+        async for chunk in stream(request):
+            if isinstance(chunk, TokenChunk):
+                if first_token_at is None:
+                    # Time to first token is the number the user actually feels;
+                    # total latency hides a stream that took four seconds to
+                    # start behind one that took four seconds to finish.
+                    first_token_at = perf_counter()
+                    active.set_attribute(Attr.FIRST_TOKEN_MS, (first_token_at - started) * 1000)
+                writer({"token": chunk.text})
+            elif isinstance(chunk, FinalChunk):
+                answer = chunk.response
+        if answer is not None:
+            active.set_attributes(
+                {
+                    Attr.PROVIDER_MODEL: answer.provider_model,
+                    Attr.INPUT_TOKENS: answer.input_tokens,
+                    Attr.OUTPUT_TOKENS: answer.output_tokens,
+                    Attr.TOTAL_TOKENS: answer.input_tokens + answer.output_tokens,
+                }
+            )
 
     if answer is None:
         # The stream ended without a final chunk: the connection died rather than
@@ -272,7 +339,9 @@ async def output_safety_check(state: ChatState, config: RunnableConfig) -> dict[
         raise GraphInputError("generate_answer did not produce an answer")
 
     question = state.messages[-2].text if len(state.messages) >= 2 else ""
-    outcome = await check_output(question, state.answer.text)
+    with span(SPAN_FOR_NODE["output_safety_check"], {Attr.CHAT_ID: state.chat_id}) as active:
+        outcome = await check_output(question, state.answer.text)
+        _describe_safety(active, outcome)
     await _record(config, outcome)
 
     if outcome.blocks or outcome.warnings:
@@ -312,7 +381,10 @@ async def persist(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
         raise GraphInputError(
             f"no {PERSIST_KEY!r} in the run config; the graph cannot store its own answer"
         )
-    return {"persisted_message_id": await persist_answer(state.answer)}
+    with span(SPAN_FOR_NODE["persist"], {Attr.CHAT_ID: state.chat_id}) as active:
+        message_id = await persist_answer(state.answer)
+        active.set_attribute(Attr.MESSAGE_ID, message_id)
+    return {"persisted_message_id": message_id}
 
 
 #: The two branch labels, named so the builder and the tests cannot drift.

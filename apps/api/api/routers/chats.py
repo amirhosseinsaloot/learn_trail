@@ -30,6 +30,8 @@ from ai_core import ChatTurn, CompletionResponse, GatewayError, ModelAlias
 from ai_core.graphs.chat import PERSIST_KEY, RECORD_SAFETY_KEY, ChatState, GraphError
 from ai_core.graphs.messages import context_to_langchain
 from ai_core.safety.decisions import SafetyOutcome, SafetyStage
+from ai_core.telemetry import Attr, activate, current_trace_id, span, start_span
+from ai_core.telemetry.spans import CHAT_REQUEST, LOAD_CONVERSATION
 from api import sse
 from api.graph import chat_graph
 from api.schemas import (
@@ -288,15 +290,33 @@ async def stream_answer(chat_id: uuid.UUID, db: Session, graph: ChatGraph) -> St
     only issues GET requests, and this endpoint is a POST because it creates a
     message.
     """
-    chat = await _load_chat(db, chat_id)
+    # Started here and ended inside `events()` below, because the operation this
+    # span measures does not fit inside this function: the handler returns a
+    # `StreamingResponse` and the graph only runs afterwards, as the body is
+    # consumed. A `with` block here would close the span before the model call
+    # it is supposed to contain had begun.
+    request_span = start_span(CHAT_REQUEST, {Attr.CHAT_ID: str(chat_id)})
+
+    try:
+        with activate(request_span), span(LOAD_CONVERSATION):
+            chat = await _load_chat(db, chat_id)
+    except BaseException:
+        # Including HTTPException — a 404 for an unknown chat is a fact about
+        # this request, and a span left open would never be exported at all.
+        request_span.end()
+        raise
+
     if chat.status is ChatStatus.DELETED:
+        request_span.end()
         raise HTTPException(
             status.HTTP_409_CONFLICT, f"chat {chat_id} is deleted; restore it before answering"
         )
     if not chat.messages:
+        request_span.end()
         raise HTTPException(status.HTTP_409_CONFLICT, f"chat {chat_id} has no messages to answer")
     if chat.messages[-1].role is not MessageRole.USER:
         # Answering an assistant turn would produce the model replying to itself.
+        request_span.end()
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             "the last message is not a question; append a user message first",
@@ -372,6 +392,11 @@ async def stream_answer(chat_id: uuid.UUID, db: Session, graph: ChatGraph) -> St
             output_event_ids.extend(row.id for row in rows)
 
     async def events() -> AsyncIterator[str]:
+        with activate(request_span, end=True):
+            async for frame in _answer_events():
+                yield frame
+
+    async def _answer_events() -> AsyncIterator[str]:
         state = ChatState(chat_id=str(chat.id), messages=context_to_langchain(context))
         config: RunnableConfig = {
             "configurable": {
@@ -454,6 +479,11 @@ async def stream_answer(chat_id: uuid.UUID, db: Session, graph: ChatGraph) -> St
                     # Surfaced rather than hidden: a truncated answer is not a
                     # complete one, and the client should be able to say so.
                     "truncated": answer.was_truncated,
+                    # The handle that turns "this answer was poor" into a trace
+                    # to read (docs/SPEC.md §11). Sent on the wire rather than
+                    # only stored so the UI can offer the link without a second
+                    # round trip.
+                    "trace_id": current_trace_id(),
                     # The alias is the app's vocabulary; provider_model is what
                     # actually served it. Phase 5 persists both in `model_run`.
                     #

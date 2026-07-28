@@ -13,6 +13,11 @@ dependencies = [
     # api -> database, never the reverse. `database` imports nothing from `api`.
     # Phase 1's import-linter contracts will enforce this rather than trusting it.
     "learntrail-database",
+    # Traces the HTTP layer — the `chat.request` span every graph span hangs
+    # under (docs/SPEC.md §11's trace shape). Auto-instrumentation rather than a
+    # hand-written middleware: the ASGI details it gets right (status codes on
+    # streaming responses, exception recording) are not worth reimplementing.
+    "opentelemetry-instrumentation-fastapi>=0.65b0",
     "pydantic>=2.12.4",
     "uvicorn[standard]>=0.40.0",
 ]
