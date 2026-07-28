@@ -24,3 +24,8 @@ next-env.d.ts
 .env
 .env.*
 !.env.example
+
+# DeepEval writes a telemetry/state directory beside whatever invokes it
+# (Phase 6). Not ours, not reproducible, and it landed in a commit once.
+.deepeval/
+.deepeval-cache.json

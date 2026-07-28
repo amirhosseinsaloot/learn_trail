@@ -140,6 +140,11 @@ test: ## Unit tests, excluding phase exit-criterion tests (`pytest -m "not slow 
 # --------------------------------------------------------------------------
 .PHONY: evals evals-gate evals-sync
 
+# DEEPEVAL_TELEMETRY_OPT_OUT: DeepEval reports usage to its vendor by default.
+# This repo sends prompts and answers to exactly one place on purpose (the
+# LiteLLM gateway), and a second, undeclared egress from the tool that reads
+# every golden case is not something to leave on by accident.
+evals: export DEEPEVAL_TELEMETRY_OPT_OUT = YES
 evals: ## Run the evaluation suite against real models and record the gate manifest
 	uv sync --all-groups --extra judges
 	set -a; [ -f .env ] && . ./.env; set +a; \

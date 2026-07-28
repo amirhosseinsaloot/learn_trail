@@ -16,9 +16,9 @@ Exit criterion (verbatim, docs/SPEC.md):
 
 - [x] Golden conversation, summary, and safety datasets under evals/ (owner: `ai-orchestration`) — commit: `70faeba`
 - [x] DeepEval pytest-style suite: relevance, faithfulness, completeness, toxicity (owner: `ai-orchestration`) — commit: `3adc096`
-- [x] Promptfoo comparisons: prompt A/B, model A/B (owner: `ai-orchestration`) — commit: `____`
+- [x] Promptfoo comparisons: prompt A/B, model A/B (owner: `ai-orchestration`) — commit: `90749c0`
 - [x] evaluation_case, evaluation_result tables + endpoints (owner: `backend-api`) — commit: `3adc096`
-- [x] CI wiring so the evaluation suite runs on prompt/model-affecting changes (owner: `infra-devops`) — commit: `____`
+- [x] CI wiring so the evaluation suite runs on prompt/model-affecting changes (owner: `infra-devops`) — commit: `90749c0`
 
 The `eval-engineer` agent this plan named does not exist, like Phase 4's
 `safety-engineer`. The work was done by `ai-orchestration` and `backend-api`
