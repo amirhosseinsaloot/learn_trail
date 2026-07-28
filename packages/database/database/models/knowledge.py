@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
@@ -34,6 +35,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -103,6 +105,12 @@ class SummaryDraft(Base):
     #: e.g. `learning_summary@1`. docs/SPEC.md §12: every record says which prompt
     #: produced it, or the prompt library's versioning buys nothing.
     prompt_version: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    #: The call that generated it (docs/SPEC.md §17). `SET NULL`: deleting the
+    #: cost record must not delete the draft it explains.
+    model_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("model_run.id", ondelete="SET NULL")
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -287,4 +295,69 @@ class SafetyEvent(Base):
         CheckConstraint("severity >= 0", name="severity_non_negative"),
         # The audit query is "what happened recently, worst first".
         Index("ix_safety_event_recent", "created_at", "severity"),
+    )
+
+
+class ModelRun(Base):
+    """One call to a model, and what it cost (docs/SPEC.md §17, Phase 5).
+
+    **The join between the database and the traces.** `trace_id` is what turns "a
+    poor answer" — a row someone is looking at — into a trace they can open, which
+    is the Phase 5 exit criterion read from the storage side. Nullable, because a
+    call made outside a trace must be recorded as untraced rather than given a
+    fabricated id.
+
+    **A row per call, not per answer.** A blocked answer still spent tokens, and a
+    table that recorded only the answers people received would understate spend by
+    exactly the amount spent on the ones they did not. `status` distinguishes the
+    three endings, and `blocked` is deliberately not folded into `error`: one is
+    the safety pipeline working.
+
+    Referenced by `message` and `summary_draft` rather than referencing them:
+    a run exists as soon as the model returns, and whether it becomes a message
+    is decided afterwards.
+    """
+
+    __tablename__ = "model_run"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+
+    #: 32 hex characters, or NULL. Indexed: "show me the run for this trace" is
+    #: the query that makes a trace and a row navigable in both directions.
+    trace_id: Mapped[str | None] = mapped_column(String(32), index=True)
+
+    #: `chat.answer`, `summary.generate` — which of the system's reasons for
+    #: spending money this was.
+    operation: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    #: The role asked for, and the model that served it. Both, because both move
+    #: independently — that indirection is the whole point of the alias.
+    model_alias: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider_model: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    prompt_version: Mapped[str | None] = mapped_column(String(100))
+
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    #: USD. `Numeric`, never a float: money summed in binary floating point drifts,
+    #: and this column exists to be summed. Nullable because an unpriced model is
+    #: not a free one (ai_core/models/pricing.py) — 0 would be a lie that totals.
+    estimated_cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
+
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="ok")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint("status IN ('ok', 'error', 'blocked')", name="status_is_known"),
+        CheckConstraint(
+            "input_tokens >= 0 AND output_tokens >= 0", name="token_counts_non_negative"
+        ),
+        CheckConstraint("latency_ms >= 0", name="latency_non_negative"),
+        # The cost query is "what did the last week cost, worst first".
+        Index("ix_model_run_recent", "created_at", "operation"),
     )

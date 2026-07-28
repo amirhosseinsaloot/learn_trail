@@ -11,6 +11,9 @@ remaining docs/SPEC.md §17 tables arrive with the phase that introduces their
 concept: `safety_event` in Phase 4, `model_run` in Phase 5, `evaluation_*` in
 Phase 6, `prompt_version` alongside the prompt lifecycle.
 
+`model_run` lives in the knowledge module rather than a third one for want of a
+better home: it belongs to neither aggregate and is referenced by both.
+
 No model here has a `user_id`, and none ever will (CLAUDE.md invariant #1).
 """
 
@@ -20,6 +23,7 @@ from database.models.knowledge import (
     DraftStatus,
     Learning,
     LearningRevision,
+    ModelRun,
     SafetyEvent,
     SummaryDraft,
 )
@@ -33,6 +37,7 @@ __all__ = [
     "LearningRevision",
     "Message",
     "MessageRole",
+    "ModelRun",
     "SafetyEvent",
     "SummaryDraft",
 ]

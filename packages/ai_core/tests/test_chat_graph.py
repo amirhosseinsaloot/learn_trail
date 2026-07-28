@@ -132,7 +132,7 @@ async def _run(
     """Run the graph to completion; return final values, tokens, and stored ids."""
     stored: list[str] = []
 
-    async def persist_answer(answer: CompletionResponse) -> str:
+    async def persist_answer(answer: CompletionResponse, model_run_id: str | None) -> str:
         stored.append(answer.text)
         return "stored-id"
 
@@ -224,7 +224,7 @@ async def test_a_run_walks_the_nodes_in_order(monkeypatch: pytest.MonkeyPatch) -
     _stub_gateway(monkeypatch, parts=["hi"])
     stored: list[str] = []
 
-    async def persist_answer(answer: CompletionResponse) -> str:
+    async def persist_answer(answer: CompletionResponse, model_run_id: str | None) -> str:
         stored.append(answer.text)
         return "stored-id"
 
@@ -446,5 +446,5 @@ async def test_the_graph_runs_without_a_recorder(monkeypatch: pytest.MonkeyPatch
     assert final["persisted_message_id"] == "stored-id"
 
 
-async def _unused(answer: CompletionResponse) -> str:
+async def _unused(answer: CompletionResponse, model_run_id: str | None) -> str:
     return "stored-id"

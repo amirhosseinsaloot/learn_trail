@@ -27,9 +27,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload
 
 from ai_core import ChatTurn, CompletionResponse, GatewayError, ModelAlias
-from ai_core.graphs.chat import PERSIST_KEY, RECORD_SAFETY_KEY, ChatState, GraphError
+from ai_core.graphs.chat import (
+    PERSIST_KEY,
+    RECORD_RUN_KEY,
+    RECORD_SAFETY_KEY,
+    ChatState,
+    GraphError,
+)
 from ai_core.graphs.messages import context_to_langchain
 from ai_core.safety.decisions import SafetyOutcome, SafetyStage
+from ai_core.schemas.model_run import ModelRun as ModelRunFacts
+from ai_core.schemas.model_run import RunStatus
 from ai_core.telemetry import Attr, activate, current_trace_id, span, start_span
 from ai_core.telemetry.spans import CHAT_REQUEST, LOAD_CONVERSATION
 from api import sse
@@ -42,7 +50,7 @@ from api.schemas import (
     MessageCreate,
     MessageRead,
 )
-from database.models import Chat, ChatStatus, Message, MessageRole, SafetyEvent
+from database.models import Chat, ChatStatus, Message, MessageRole, ModelRun, SafetyEvent
 from database.session import session
 
 router = APIRouter(prefix="/chats", tags=["chats"])
@@ -330,12 +338,13 @@ async def stream_answer(chat_id: uuid.UUID, db: Session, graph: ChatGraph) -> St
     # the whole workflow can be exercised with no Postgres — and it keeps the
     # request's session, which the graph knows nothing about, in the layer that
     # owns it.
-    async def persist_answer(answer: CompletionResponse) -> str:
+    async def persist_answer(answer: CompletionResponse, model_run_id: str | None) -> str:
         message = Message(
             chat_id=chat.id,
             role=MessageRole.ASSISTANT,
             content=answer.text,
             sequence_number=next_position,
+            model_run_id=uuid.UUID(model_run_id) if model_run_id else None,
         )
         db.add(message)
         await db.flush()
@@ -356,6 +365,36 @@ async def stream_answer(chat_id: uuid.UUID, db: Session, graph: ChatGraph) -> St
         )
         await db.commit()
         return str(message.id)
+
+    #: This request's model run, if one happened. Held so the output-stage safety
+    #: check can mark it blocked: the call itself succeeded and cost money, and
+    #: only the layer that owns persistence knows about both facts at once.
+    run_ids: list[uuid.UUID] = []
+
+    async def record_run(facts: ModelRunFacts) -> str:
+        """Store what one model call cost, before anything decides to keep it.
+
+        Committed immediately, like a safety event and for the same reason: the
+        tokens are already spent, so a run that was only recorded on success
+        would understate spend by exactly the amount spent on the answers nobody
+        received.
+        """
+        run = ModelRun(
+            trace_id=facts.trace_id,
+            operation=facts.operation,
+            model_alias=facts.alias.value,
+            provider_model=facts.provider_model,
+            prompt_version=facts.prompt_version,
+            input_tokens=facts.input_tokens,
+            output_tokens=facts.output_tokens,
+            estimated_cost=facts.estimated_cost,
+            latency_ms=facts.latency_ms,
+            status=facts.status.value,
+        )
+        db.add(run)
+        await db.commit()
+        run_ids.append(run.id)
+        return str(run.id)
 
     #: Ids of this request's output-stage events, so `persist_answer` can attach
     #: them to the message once it has one. Empty for a blocked answer, which is
@@ -387,6 +426,17 @@ async def stream_answer(chat_id: uuid.UUID, db: Session, graph: ChatGraph) -> St
             for decision in outcome.decisions
         ]
         db.add_all(rows)
+
+        # A refused answer's run is marked here rather than in the graph. The
+        # graph knows the call succeeded; the endpoint is the only place that
+        # holds both that fact and the row it was written to.
+        if outcome.stage is SafetyStage.OUTPUT and outcome.blocks and run_ids:
+            await db.execute(
+                update(ModelRun)
+                .where(ModelRun.id.in_(run_ids))
+                .values(status=RunStatus.BLOCKED.value)
+            )
+
         await db.commit()
         if outcome.stage is SafetyStage.OUTPUT:
             output_event_ids.extend(row.id for row in rows)
@@ -417,6 +467,7 @@ async def stream_answer(chat_id: uuid.UUID, db: Session, graph: ChatGraph) -> St
                 # execution rather than one ever-growing thread.
                 "thread_id": f"{chat.id}:{next_position}",
                 PERSIST_KEY: persist_answer,
+                RECORD_RUN_KEY: record_run,
                 RECORD_SAFETY_KEY: record_safety,
             }
         }

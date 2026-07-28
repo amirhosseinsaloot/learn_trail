@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ai_core.graphs.chat import build_chat_graph
 from ai_core.safety.decisions import SafetyAction, SafetyDecision, SafetyOutcome, SafetyStage
 from api.main import app
-from database.models import SafetyEvent
+from database.models import Message, ModelRun, SafetyEvent
 from database.session import engine, session
 
 pytestmark = pytest.mark.anyio
@@ -789,3 +789,107 @@ async def _chat_with_question(client: AsyncClient, question: str) -> str:
     chat_id = (await client.post("/chats", json={"title": "safety"})).json()["id"]
     await client.post(f"/chats/{chat_id}/messages", json={"role": "user", "content": question})
     return str(chat_id)
+
+
+# --- model runs -----------------------------------------------------------------
+#
+# Scoped by `provider_model == "stub-model"`, never `select(ModelRun)` bare. The
+# test database is the same Postgres the dev stack runs against, so a bare query
+# picks up runs committed by real requests — which is how this file first
+# "failed": a live `gpt-4o-mini` run from a browser session, priced and
+# committed, was the row the unpriced-model assertion happened to read.
+
+
+async def _stub_runs(db: AsyncSession) -> list[ModelRun]:
+    """This suite's model runs, newest first.
+
+    `expire_all` because `record_safety` marks a blocked run with a bulk UPDATE:
+    the statement reaches the database, but the ORM object already in this
+    session's identity map keeps its old attributes, and the harness deliberately
+    uses `expire_on_commit=False`. A real request would read a fresh session and
+    see the new value; only this shared-session test needs telling.
+    """
+    db.expire_all()
+    result = await db.execute(
+        select(ModelRun)
+        .where(ModelRun.provider_model == "stub-model")
+        .order_by(ModelRun.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def test_an_answer_records_what_it_cost(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch, db: AsyncSession
+) -> None:
+    """docs/SPEC.md §17's `model_run`, written on the way past.
+
+    The alias and the provider model are both recorded because both move
+    independently — a row that knew only one could answer neither "what does this
+    role cost" nor "which model got slower".
+    """
+    _stub_stream(monkeypatch, parts=["an answer"])
+    chat_id = await _chat_with_question(client, "a question")
+    await client.post(f"/chats/{chat_id}/answer")
+
+    run = next(r for r in await _stub_runs(db) if r.operation == "chat.answer")
+    assert run.model_alias == "learning-fast"
+    assert run.provider_model == "stub-model"
+    assert run.input_tokens == 7
+    assert run.status == "ok"
+    assert run.latency_ms >= 0
+
+
+async def test_the_answer_message_points_at_its_run(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch, db: AsyncSession
+) -> None:
+    """The link that makes "what did this answer cost" a single query."""
+    _stub_stream(monkeypatch, parts=["an answer"])
+    chat_id = await _chat_with_question(client, "a question")
+    body = (await client.post(f"/chats/{chat_id}/answer")).text
+    message_id = next(data for name, data in _parse_sse(body) if name == "done")["message_id"]
+
+    message = (
+        await db.execute(select(Message).where(Message.id == uuid.UUID(str(message_id))))
+    ).scalar_one()
+    assert message.model_run_id is not None
+    run = (
+        await db.execute(select(ModelRun).where(ModelRun.id == message.model_run_id))
+    ).scalar_one()
+    assert run.operation == "chat.answer"
+
+
+async def test_a_blocked_answer_still_records_its_run(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch, db: AsyncSession
+) -> None:
+    """The tokens were spent whether or not anyone got the answer.
+
+    A run table that recorded only delivered answers would understate spend by
+    exactly the amount spent on the refused ones — which is the number most worth
+    watching, because nothing else in the product reveals it.
+    """
+    _stub_stream(monkeypatch, parts=["bad answer"])
+    _stub_safety(monkeypatch, on_output=SafetyAction.BLOCK)
+    chat_id = await _chat_with_question(client, "a question")
+    await client.post(f"/chats/{chat_id}/answer")
+
+    run = next(r for r in await _stub_runs(db) if r.operation == "chat.answer")
+    # `blocked`, not `error`: the call itself worked, and an operator reading a
+    # spike of one would draw the wrong conclusion from the other.
+    assert run.status == "blocked"
+    assert run.output_tokens > 0
+
+
+async def test_an_unpriced_model_records_no_cost_rather_than_zero(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch, db: AsyncSession
+) -> None:
+    """A zero would be a claim that the call was free, and it would sum.
+
+    `stub-model` is deliberately absent from the price table, so this is the
+    unknown-model path exactly as it would happen with a newly configured alias.
+    """
+    _stub_stream(monkeypatch, parts=["an answer"])
+    chat_id = await _chat_with_question(client, "a question")
+    await client.post(f"/chats/{chat_id}/answer")
+
+    run = next(r for r in await _stub_runs(db) if r.operation == "chat.answer")
+    assert run.estimated_cost is None

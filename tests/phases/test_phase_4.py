@@ -165,7 +165,7 @@ def test_phase_4_exit_criterion() -> None:
         async def fake_output(question: str, answer: str) -> SafetyOutcome:
             return outcome(SafetyStage.OUTPUT, on_output)
 
-        async def persist_answer(answer: CompletionResponse) -> str:
+        async def persist_answer(answer: CompletionResponse, model_run_id: str | None) -> str:
             stored.append(answer.text)
             return "stored-id"
 

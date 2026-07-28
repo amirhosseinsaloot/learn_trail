@@ -234,6 +234,13 @@ class Message(Base):
     # ambiguous — and the order of a conversation is not a detail.
     sequence_number: Mapped[int] = mapped_column(Integer, nullable=False)
 
+    #: The model call that produced it, for an assistant turn (docs/SPEC.md §17).
+    #: Always NULL on a user turn — the user's question cost nothing. `SET NULL`
+    #: rather than `CASCADE`: deleting the cost record must not delete the answer.
+    model_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("model_run.id", ondelete="SET NULL")
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

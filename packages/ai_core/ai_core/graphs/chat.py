@@ -51,10 +51,12 @@ from pydantic import BaseModel, Field
 from ai_core.graphs.messages import context_from_langchain
 from ai_core.models.aliases import ModelAlias
 from ai_core.models.gateway import stream
+from ai_core.models.pricing import estimate_cost
 from ai_core.safety.decisions import SafetyOutcome, SafetyStage
 from ai_core.safety.pipeline import check_input, check_output
 from ai_core.schemas.completion import CompletionRequest, CompletionResponse, FinalChunk, TokenChunk
-from ai_core.telemetry import Attr, span
+from ai_core.schemas.model_run import ModelRun, RunStatus
+from ai_core.telemetry import Attr, current_trace_id, set_attributes, span
 from ai_core.telemetry.spans import SPAN_FOR_NODE
 
 #: Key under which the caller supplies the persistence callable (see module
@@ -62,14 +64,23 @@ from ai_core.telemetry.spans import SPAN_FOR_NODE
 #: channel for per-run values that are not part of graph state.
 PERSIST_KEY: Final = "persist_answer"
 
+#: Injected recorder for one model call's cost and latency. Separate again, and
+#: for the same kind of reason: the money was spent whether or not an answer
+#: reached storage, so this must not be able to ride along with persistence.
+RECORD_RUN_KEY: Final = "record_run"
+
 #: Injected recorder for safety decisions. Separate from `PERSIST_KEY` because
 #: the two are written at different moments and one survives the other: a blocked
 #: interaction persists no message but must still persist its safety events.
 RECORD_SAFETY_KEY: Final = "record_safety"
 
-#: Signature of that callable: given the finished answer, store it and return the
-#: id of the row created. Async because the caller's session is async.
-PersistAnswer = Callable[[CompletionResponse], Awaitable[str]]
+#: Signature of that callable: given the finished answer and the id of the model
+#: run that produced it, store it and return the id of the row created. Async
+#: because the caller's session is async.
+PersistAnswer = Callable[[CompletionResponse, str | None], Awaitable[str]]
+#: Given one call's facts, record them and return the row's id. The id comes back
+#: because the message that results has to point at it.
+RecordRun = Callable[[ModelRun], Awaitable[str]]
 #: Given one stage's outcome, store its decisions. Returns nothing — the graph
 #: does not depend on the audit trail, but the audit trail must not depend on the
 #: graph succeeding either.
@@ -125,6 +136,10 @@ class ChatState(BaseModel):
 
     #: Set by `persist` — evidence the answer reached storage.
     persisted_message_id: str | None = None
+
+    #: Set by `generate_answer` — what the call cost, as a row id. Present even
+    #: when the answer is refused, because the tokens were spent regardless.
+    model_run_id: str | None = None
 
     #: What the input and output checks decided. Kept on state rather than being
     #: acted on and discarded, so a caller can report *why* an interaction stopped
@@ -258,7 +273,7 @@ async def choose_model(state: ChatState) -> dict[str, Any]:
     return {"alias": ModelAlias.LEARNING_FAST}
 
 
-async def generate_answer(state: ChatState) -> dict[str, Any]:
+async def generate_answer(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
     """Call the model through the gateway, streaming tokens out as they arrive.
 
     Tokens are emitted on LangGraph's `custom` stream channel via
@@ -268,6 +283,9 @@ async def generate_answer(state: ChatState) -> dict[str, Any]:
     """
     if state.alias is None:  # pragma: no cover - unreachable via the compiled graph
         raise GraphInputError("choose_model did not run before generate_answer")
+
+    configurable: dict[str, Any] = config.get("configurable") or {}
+    record_run: RecordRun | None = configurable.get(RECORD_RUN_KEY)
 
     writer = get_stream_writer()
     request = CompletionRequest(alias=state.alias, messages=context_from_langchain(state.context))
@@ -294,15 +312,40 @@ async def generate_answer(state: ChatState) -> dict[str, Any]:
                 writer({"token": chunk.text})
             elif isinstance(chunk, FinalChunk):
                 answer = chunk.response
+        latency_ms = int((perf_counter() - started) * 1000)
         if answer is not None:
-            active.set_attributes(
+            cost = estimate_cost(answer.provider_model, answer.input_tokens, answer.output_tokens)
+            # `set_attributes` rather than the span's own method: an unpriced
+            # model gives `cost is None`, and OTel has no null — the helper drops
+            # the key instead of writing the string "None" as a recorded fact.
+            set_attributes(
+                active,
                 {
                     Attr.PROVIDER_MODEL: answer.provider_model,
                     Attr.INPUT_TOKENS: answer.input_tokens,
                     Attr.OUTPUT_TOKENS: answer.output_tokens,
                     Attr.TOTAL_TOKENS: answer.input_tokens + answer.output_tokens,
-                }
+                    Attr.ESTIMATED_COST: float(cost) if cost is not None else None,
+                },
             )
+
+    # Outside the span, because the span's own id is not what goes on the row —
+    # the *trace* id is, and it is still current here.
+    model_run_id: str | None = None
+    if record_run is not None and answer is not None:
+        model_run_id = await record_run(
+            ModelRun(
+                operation="chat.answer",
+                trace_id=current_trace_id(),
+                alias=state.alias,
+                provider_model=answer.provider_model,
+                input_tokens=answer.input_tokens,
+                output_tokens=answer.output_tokens,
+                estimated_cost=cost,
+                latency_ms=latency_ms,
+                status=RunStatus.OK,
+            )
+        )
 
     if answer is None:
         # The stream ended without a final chunk: the connection died rather than
@@ -320,7 +363,11 @@ async def generate_answer(state: ChatState) -> dict[str, Any]:
 
     # The answer joins `messages` as well as `answer`, so the checkpointed
     # transcript is the real one — which is what a resumed thread reads back.
-    return {"answer": answer, "messages": [AIMessage(content=answer.text)]}
+    return {
+        "answer": answer,
+        "messages": [AIMessage(content=answer.text)],
+        "model_run_id": model_run_id,
+    }
 
 
 async def output_safety_check(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
@@ -382,7 +429,7 @@ async def persist(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
             f"no {PERSIST_KEY!r} in the run config; the graph cannot store its own answer"
         )
     with span(SPAN_FOR_NODE["persist"], {Attr.CHAT_ID: state.chat_id}) as active:
-        message_id = await persist_answer(state.answer)
+        message_id = await persist_answer(state.answer, state.model_run_id)
         active.set_attribute(Attr.MESSAGE_ID, message_id)
     return {"persisted_message_id": message_id}
 

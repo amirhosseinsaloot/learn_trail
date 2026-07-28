@@ -24,7 +24,15 @@ from database.config import DEFAULT_DATABASE_URL, database_url
 # down to the tables in this metadata precisely so Alembic never proposes
 # dropping them.
 EXPECTED_TABLES = frozenset(
-    {"chat", "message", "summary_draft", "learning", "learning_revision", "safety_event"}
+    {
+        "chat",
+        "message",
+        "summary_draft",
+        "learning",
+        "learning_revision",
+        "safety_event",
+        "model_run",
+    }
 )
 
 
