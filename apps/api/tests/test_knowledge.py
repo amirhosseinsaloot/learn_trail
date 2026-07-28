@@ -26,6 +26,7 @@ from ai_core.graphs.summary import build_summary_graph
 from ai_core.models.aliases import ModelAlias
 from ai_core.schemas.summary import LearningSummary
 from api.main import app
+from api.routers import knowledge as knowledge_module
 from database.session import engine, session
 
 pytestmark = pytest.mark.anyio
@@ -69,6 +70,17 @@ async def client(anyio_backend: str, monkeypatch: pytest.MonkeyPatch) -> AsyncIt
         )
 
     monkeypatch.setattr(summary_module, "summarise", fake_summarise)
+
+    # Approving and editing re-index the Learning (Phase 8), which is an embedding
+    # call. Unstubbed, these tests reach for the gateway at its in-network
+    # hostname, which does not resolve from the host — and because
+    # `_reindex_quietly` swallows the failure, they still *passed*, just ten
+    # seconds slower each. The suite went from 5s to 75s and stayed green, which
+    # is the worst way for a test to tell you something is wrong.
+    async def fake_index(db: object, learning: object) -> int:
+        return 0
+
+    monkeypatch.setattr(knowledge_module, "index_learning", fake_index)
 
     app.dependency_overrides[session] = override_session
     # Both graphs, sharing an in-memory checkpointer — the summary graph needs one

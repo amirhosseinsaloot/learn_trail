@@ -61,6 +61,18 @@ export type ChatDetail = components["schemas"]["ChatDetail"];
 export type Message = components["schemas"]["MessageRead"];
 
 /**
+ * One approved Learning that supplied context for an answer, and the passage it
+ * supplied (Phase 8).
+ *
+ * Built by the backend from the retrieval record, never parsed out of the answer
+ * text — so it says what was actually retrieved rather than what the model
+ * claimed about its own reasoning.
+ */
+export type Citation = components["schemas"]["Citation"];
+/** An answer grounded in approved Learnings, with its sources. */
+export type AskResponse = components["schemas"]["AskResponse"];
+
+/**
  * A model-generated summary awaiting review. **Not knowledge.**
  *
  * The type is distinct from `Learning` for the same reason the tables are: a

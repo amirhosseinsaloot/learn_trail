@@ -21,6 +21,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
+from pydantic import ValidationError
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload
@@ -35,9 +36,9 @@ from ai_core.graphs.summary import (
     SummaryRejected,
 )
 from ai_core.models.aliases import ModelAlias
-from ai_core.models.gateway import answer
+from ai_core.models.gateway import GatewayError, answer
 from ai_core.retrieval import Retrieved, embed_query, search
-from ai_core.retrieval.indexer import index_all
+from ai_core.retrieval.indexer import index_all, index_learning
 from ai_core.telemetry import Attr, current_trace_id, span
 from ai_core.telemetry.spans import RETRIEVE as RETRIEVE_SPAN
 from api.graph import summary_graph
@@ -239,7 +240,13 @@ async def approve_draft(draft_id: uuid.UUID, db: Session, graph: SummaryGraph) -
     }
     await graph.ainvoke(Command(resume=ReviewDecision.APPROVE.value), config=config)
 
-    return LearningDetail.model_validate(await _load_learning(db, learning_id))
+    learning = await _load_learning(db, learning_id)
+    # Indexed on approval, not on a schedule. Approval is the moment a draft
+    # becomes knowledge (CLAUDE.md invariant #5), so it is the moment it becomes
+    # answerable — a library that only became searchable after a nightly job
+    # would silently claim to know nothing about what you just approved.
+    await _reindex_quietly(db, learning)
+    return LearningDetail.model_validate(learning)
 
 
 @router.post("/summaries/{draft_id}/reject", status_code=status.HTTP_204_NO_CONTENT)
@@ -328,6 +335,11 @@ async def edit_learning(learning_id: uuid.UUID, body: LearningEdit, db: Session)
     # shows the history as it was a moment ago — so the user edits, and the page
     # tells them nothing happened.
     await db.refresh(learning, attribute_names=["revisions", "updated_at"])
+    # An edited Learning re-chunks and re-embeds. Skipping this would leave search
+    # answering out of the *previous* wording — the most confusing possible
+    # failure, because the citation would name a Learning whose visible text no
+    # longer says what the excerpt says.
+    await _reindex_quietly(db, learning)
     return LearningDetail.model_validate(learning)
 
 
@@ -387,6 +399,28 @@ def _require_pending(draft: SummaryDraft) -> None:
 
 
 # --- retrieval over approved Learnings (Phase 8) --------------------------------
+
+
+async def _reindex_quietly(db: Session, learning: Learning) -> None:
+    """Re-index one Learning, and never fail the request because of it.
+
+    **Indexing is a side effect of approving, not part of approving.** A gateway
+    outage during the embedding call must not turn a successful approval into a
+    500 — the user's knowledge was accepted, the row exists, and the only thing
+    missing is that it cannot be found by search yet. `POST /learnings/reindex`
+    fixes that whenever it is noticed, which is exactly why that endpoint is not
+    optional.
+
+    The failure is swallowed rather than surfaced, which is a real trade: a
+    silently unindexed Learning looks like a library that forgot something. Phase
+    5's tracing is what makes it visible — the span records the exception even
+    though the response does not.
+    """
+    try:
+        await index_learning(db, learning)
+    except (GatewayError, ValidationError) as exc:  # pragma: no cover - needs a broken gateway
+        with span(RETRIEVE_SPAN) as active:
+            active.record_exception(exc)
 
 
 def _as_citation(hit: Retrieved) -> Citation:

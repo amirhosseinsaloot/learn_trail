@@ -164,6 +164,35 @@ def _redteam_gate(args: argparse.Namespace) -> int:
     return 1
 
 
+def _retrieval(args: argparse.Namespace) -> int:
+    """Score retrieval itself: precision, recall, faithfulness (Phase 8).
+
+    Needs the database (there must be a library to retrieve from) and the
+    gateway (embeddings, and a judge per metric). Separate from `run` because it
+    measures a different thing and fails for different reasons — a low recall
+    here is a search problem, not a prompt problem.
+    """
+    from evals.retrieval_runner import run_retrieval
+
+    scores = asyncio.run(run_retrieval())
+    if not scores:
+        print("no retrieval cases, or no approved Learnings to retrieve from")
+        return 0
+
+    for score in scores:
+        mark = "PASS" if score.passed else "FAIL"
+        metrics = " ".join(
+            f"{name.split('_')[-1]}={value:.2f}" for name, value in sorted(score.metrics.items())
+        )
+        print(f"[{mark}] {score.case_id:<32} {metrics}")
+        for failure in score.failures:
+            print(f"       {failure}")
+
+    failed = sum(1 for score in scores if not score.passed)
+    print(f"\n{len(scores)} cases, {failed} failed")
+    return 0 if failed == 0 else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="evals", description=__doc__)
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -199,6 +228,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     redteam_gate.add_argument("--changed", help="newline-separated changed paths")
     redteam_gate.set_defaults(handler=_redteam_gate)
+
+    retrieval = subcommands.add_parser(
+        "retrieval", help="score retrieval precision, recall and faithfulness (calls models)"
+    )
+    retrieval.set_defaults(handler=_retrieval)
 
     args = parser.parse_args(argv)
     # `required=True` on the subparsers guarantees a handler is set, so this is a

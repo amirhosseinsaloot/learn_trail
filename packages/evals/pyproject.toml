@@ -21,6 +21,11 @@ dependencies = [
 # the criterion without installing it.
 judges = ["deepeval>=4.1,<5"]
 
+# NO `retrieval` extra, though docs/SPEC.md §9 names Ragas. ragas 0.4.3 cannot be
+# imported here at all — see the long note in evals/retrieval_eval.py. Shipping an
+# extra that installs a package nothing can import would be worse than not having
+# one: it would look like the capability was available.
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

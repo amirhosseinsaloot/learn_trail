@@ -162,7 +162,7 @@ evals-gate: ## Free, offline: is the current prompt/model config covered by a re
 # is for. Silently passing a mixed verdict would let a change that stopped more
 # attacks by refusing more ordinary questions merge on a green tick.
 # --------------------------------------------------------------------------
-.PHONY: redteam redteam-accept redteam-gate
+.PHONY: redteam redteam-accept redteam-gate evals-retrieval
 
 redteam: ## Measure the safety posture and compare it against the recorded baseline
 	set -a; [ -f .env ] && . ./.env; set +a; \
@@ -171,6 +171,14 @@ redteam: ## Measure the safety posture and compare it against the recorded basel
 redteam-accept: ## Measure, then promote the result to be the new baseline
 	set -a; [ -f .env ] && . ./.env; set +a; \
 		LITELLM_BASE_URL=$${LITELLM_BASE_URL:-http://localhost:4000} $(PY) -m evals redteam accept
+
+# Retrieval evaluation (Phase 8). Needs the stack up: there must be a library to
+# retrieve from, and each metric is a judge call.
+evals-retrieval: ## Score retrieval precision, recall and faithfulness
+	set -a; [ -f .env ] && . ./.env; set +a; \
+		LITELLM_BASE_URL=$${LITELLM_BASE_URL:-http://localhost:4000} \
+		DATABASE_URL=$${DATABASE_URL:-postgresql+psycopg://learntrail:learntrail@localhost:5432/learntrail} \
+		$(PY) -m evals retrieval
 
 redteam-gate: ## Free, offline: does the baseline describe the current safety config?
 	$(PY) -m evals redteam-gate

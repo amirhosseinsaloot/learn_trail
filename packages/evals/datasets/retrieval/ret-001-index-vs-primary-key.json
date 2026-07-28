@@ -1,0 +1,9 @@
+{
+  "id": "ret-001-index-vs-primary-key",
+  "question": "What is the difference between an index and a primary key?",
+  "ground_truth": "A primary key uniquely identifies each row and cannot be NULL. An index is a separate structure that speeds up lookups. A primary key implies a unique index.",
+  "expected_learnings": [
+    "Distinctions Between Database Indexes and Primary Keys, and When to Avoid Composite Indexes"
+  ],
+  "notes": "The baseline retrieval case: a direct question whose answer sits in exactly one Learning. If recall fails here, search is broken rather than merely imprecise, and every other score in the run should be read with that in mind."
+}

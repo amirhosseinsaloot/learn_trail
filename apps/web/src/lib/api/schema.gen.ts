@@ -341,10 +341,128 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/learnings/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search Learnings
+         * @description Hybrid search over approved Learnings. No model call, no generated answer.
+         *
+         *     POST rather than GET with a query string: the question is user content of
+         *     unbounded length, and it belongs in a body rather than in a URL that ends up
+         *     in logs and browser history. It is also validated by the same schema the ask
+         *     endpoint uses, which keeps the two from disagreeing about what a question is.
+         */
+        post: operations["search_learnings_learnings_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learnings/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Learnings
+         * @description Answer a question from the approved library, citing what supplied the context.
+         *
+         *     **The citations come from the retrieval step, not from the answer.** The model
+         *     is asked to ground its answer in the passages and to say when they do not
+         *     contain the answer; it is *not* asked to emit citation markers. Markers would
+         *     be a second, unreliable record of something the system already knows for
+         *     certain — and one that can be silently wrong in both directions, inventing a
+         *     source or omitting a real one.
+         *
+         *     An empty library returns `grounded: false` and a plain refusal rather than an
+         *     answer from the model's own knowledge. That is the whole point: this endpoint
+         *     answers *from your Learnings*, and an ungrounded answer dressed up as a
+         *     grounded one is exactly the failure Phase 8's criterion exists to prevent.
+         */
+        post: operations["ask_learnings_learnings_ask_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learnings/reindex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reindex Learnings
+         * @description Rebuild the search index for every live approved Learning.
+         *
+         *     Explicit rather than automatic-only. Approval and editing keep the index in
+         *     step on their own, but a re-index is the correct response to a changed
+         *     embedding model, a changed chunking rule, or any doubt at all — and it must be
+         *     possible to run it without a redeploy. Idempotent by construction: indexing
+         *     replaces a Learning's chunks rather than adding to them.
+         */
+        post: operations["reindex_learnings_learnings_reindex_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AskRequest
+         * @description A question to answer from the approved library.
+         */
+        AskRequest: {
+            /** Question */
+            question: string;
+            /**
+             * Limit
+             * @default 5
+             */
+            limit: number;
+        };
+        /**
+         * AskResponse
+         * @description An answer grounded in approved Learnings, with its sources.
+         *
+         *     `citations` is never inferred from the answer text. It is the list of chunks
+         *     that were placed in the context, which is what "supplied the context" means —
+         *     a Learning the model was given and chose not to lean on still supplied
+         *     context, and pretending otherwise would require asking the model to introspect
+         *     on its own reasoning.
+         */
+        AskResponse: {
+            /** Question */
+            question: string;
+            /** Answer */
+            answer: string;
+            /** Citations */
+            citations: components["schemas"]["Citation"][];
+            /** Grounded */
+            grounded: boolean;
+            /** Trace Id */
+            trace_id?: string | null;
+        };
         /**
          * ChangeSource
          * @description Who caused a revision (docs/SPEC.md §17, `learning_revision.change_source`).
@@ -450,6 +568,37 @@ export interface components {
          * @enum {string}
          */
         ChatStatus: "active" | "deleted";
+        /**
+         * Citation
+         * @description One approved Learning that supplied context, and the passage it supplied.
+         *
+         *     **This type is Phase 8's exit criterion.** The criterion asks that an answer
+         *     identify *exactly* which approved Learning supplied its context, and a
+         *     citation built from the retrieval record does that by construction: the
+         *     `learning_id` is the row the chunk came from, not a number the model wrote in
+         *     its prose and might have invented or omitted.
+         *
+         *     `excerpt` is the chunk text verbatim, so a reader can check the answer against
+         *     what the model was actually given rather than against the Learning as it
+         *     stands today — those differ the moment the Learning is edited.
+         */
+        Citation: {
+            /**
+             * Learning Id
+             * Format: uuid
+             */
+            learning_id: string;
+            /** Learning Title */
+            learning_title: string;
+            /** Chunk Index */
+            chunk_index: number;
+            /** Excerpt */
+            excerpt: string;
+            /** Score */
+            score: number;
+            /** Matched By */
+            matched_by: string;
+        };
         /**
          * DraftStatus
          * @description Where a draft is in review (docs/SPEC.md §4).
@@ -620,6 +769,16 @@ export interface components {
          * @enum {string}
          */
         MessageRole: "user" | "assistant" | "system";
+        /**
+         * SearchResult
+         * @description What a plain search returns: passages, no generated answer.
+         */
+        SearchResult: {
+            /** Query */
+            query: string;
+            /** Citations */
+            citations: components["schemas"]["Citation"][];
+        };
         /**
          * SummaryContent
          * @description The editable body of a draft or a Learning.
@@ -1274,6 +1433,94 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_learnings_learnings_search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_learnings_learnings_ask_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reindex_learnings_learnings_reindex_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
                 };
             };
         };

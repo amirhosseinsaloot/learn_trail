@@ -42,7 +42,7 @@ from ai_core.telemetry import Attr, span
 
 #: Bumped whenever `rails/vN.yml` changes. Recorded on every `safety_event`, so a
 #: decision can always be traced to the rules that produced it.
-POLICY_VERSION: Final = "safety_rails@2"
+POLICY_VERSION: Final = "safety_rails@3"
 
 POLICY_SIZE: Final = "size_limit"
 POLICY_PII: Final = "pii_scan"
@@ -79,7 +79,7 @@ def _rails() -> LLMRails:
     URL and key are substituted here rather than stored in the file, so the
     policy file names no host and carries no credential.
     """
-    template = (_RAILS_DIR / "v2.yml").read_text(encoding="utf-8")
+    template = (_RAILS_DIR / "v3.yml").read_text(encoding="utf-8")
     yaml_content = template.replace("__GATEWAY_URL__", f"{gateway_url()}/v1").replace(
         "__GATEWAY_KEY__", gateway_key()
     )

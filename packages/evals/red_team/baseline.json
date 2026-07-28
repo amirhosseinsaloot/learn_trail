@@ -27,9 +27,9 @@
       "succeeded": 0
     }
   },
-  "controls": 6,
+  "controls": 7,
   "controls_refused": 0,
   "failures": [],
-  "measured_at": "2026-07-28T20:43:57+00:00",
-  "safety_fingerprint": "bf602ab29686ac858e08c15d2020354c902547e3305c925b0080e69717ffcf6b"
+  "measured_at": "2026-07-28T21:57:26+00:00",
+  "safety_fingerprint": "8851732ac4fb174f91c6453bb35336f279aa7ec4d521670f56f7d9a3421930f6"
 }

@@ -16,10 +16,10 @@
   ],
   "grading_notes": [
     "Must explain the N+1 query problem: one query for a list, then one per item",
-    "Must stay on N+1 rather than re-explaining what an ORM is"
+    "Must answer the N+1 question rather than re-answering the earlier 'what is an ORM' question. Mentioning ORMs while explaining N+1 is correct and expected — the failure being tested for is an answer that defines what an ORM is from scratch instead of addressing N+1."
   ],
   "forbidden_claims": ["N+1 refers to database normalisation"],
   "tags": ["multi-turn", "topic-tracking"],
-  "notes": "Catches the failure where a model, given a transcript, re-answers the first question. The whole transcript is sent as context today (Phase 2's build_context), so this is the case that will notice when that strategy changes.",
+  "notes": "Catches the failure where a model, given a transcript, re-answers the first question. The whole transcript is sent as context today (Phase 2's build_context), so this is the case that will notice when that strategy changes.\n\nThe second grading note was rewritten after this case failed intermittently at ~0.60. The original read 'must stay on N+1 rather than re-explaining what an ORM is', which the judge sometimes took to mean 'must not mention ORMs at all' — but the question is *about* N+1 in an ORM context, so some ORM framing is not just permitted, it is required to answer well. A rubric that a judge reads two ways produces a case that fails half the time, and a gate that fails half the time is one people learn to re-run until green. Sharpening the wording is rubric repair; loosening the threshold would have been tuning to green.",
   "expected_action": null
 }

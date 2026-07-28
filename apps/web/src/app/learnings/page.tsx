@@ -10,6 +10,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { AskLearnings } from "@/components/AskLearnings";
 import { api, type Learning, toContent } from "@/lib/api/client";
 
 export default function LearningsPage() {
@@ -44,6 +45,11 @@ export default function LearningsPage() {
           ← Back to chat
         </Link>
       </header>
+
+      {/* Placed above the list on purpose: with a library of any size, asking is
+          the faster way in than scrolling. Phase 8's whole premise is that the
+          library is worth querying rather than only browsing. */}
+      <AskLearnings />
 
       {notice !== null && (
         <p
