@@ -32,7 +32,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from opentelemetry.trace import Span, Status, StatusCode
+from opentelemetry.trace import Span
 
 #: Standard OTel variables. Named rather than inlined so the one place they are
 #: read is greppable — and so the phase test can assert nothing else is.
@@ -140,22 +140,25 @@ def tracer() -> trace.Tracer:
 
 @contextmanager
 def span(name: str, attributes: Mapping[str, Any] | None = None) -> Iterator[Span]:
-    """Record one operation, and record it truthfully if it raises.
+    """Record one operation.
 
-    A thin wrapper over `start_as_current_span` that exists for the exception
-    path: OpenTelemetry marks a span's status `ERROR` only if you tell it to, and
-    a trace where a failed request looks successful is worse than no trace. The
-    exception is re-raised — this observes, it does not handle.
+    A thin wrapper over `start_as_current_span`, for two things: the attribute
+    helper below (which drops `None` rather than writing the string "None"), and
+    one name to change if span creation ever needs a policy.
+
+    **There is deliberately no exception handler here.** An earlier version
+    caught, recorded and re-raised — and a mutation test showed removing it
+    changed nothing, because `start_as_current_span` defaults
+    `record_exception=True` and `set_status_on_exception=True`. A failed call
+    already ends up with an `ERROR` status and the exception attached, which is
+    what matters: a trace where a failure looks successful misleads the person
+    debugging. Left as a comment because the handler looks conspicuously missing
+    and someone will otherwise put it back.
     """
     with tracer().start_as_current_span(name) as active:
         if attributes:
             set_attributes(active, attributes)
-        try:
-            yield active
-        except Exception as exc:
-            active.record_exception(exc)
-            active.set_status(Status(StatusCode.ERROR, str(exc)))
-            raise
+        yield active
 
 
 def start_span(name: str, attributes: Mapping[str, Any] | None = None) -> Span:

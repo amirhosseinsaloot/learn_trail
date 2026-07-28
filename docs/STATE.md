@@ -1,10 +1,10 @@
 # State
 
-Current phase: **Phase 4 is COMPLETE. Phase 5 — Observability is next**
-(see [plans/phase-5.md](../plans/phase-5.md)); nothing in Phase 5 has been
+Current phase: **Phase 5 is COMPLETE. Phase 6 — Evaluation-driven development is
+next** (see [plans/phase-6.md](../plans/phase-6.md)); nothing in Phase 6 has been
 started.
 
-`make status` reports **Phase 0, 1, 2, 3 and 4 PASS**. Phases 5–12 are red, as
+`make status` reports **Phase 0, 1, 2, 3, 4 and 5 PASS**. Phases 6–12 are red, as
 designed.
 
 All six Phase 1 tasks: `chat`+`message` tables and the async session `421feb8`,
@@ -54,9 +54,34 @@ finds structured identifiers and not names; and the rails **fail open** — a ju
 model that is down allows the message with a warning recorded rather than taking
 the product down with it.
 
-Next: Phase 5, observability. Note it will want `model_run`, which the chat
-graph's `persist` node is already the natural home for, and Phoenix/OTel wiring
-in `infra/`.
+Phase 5 added tracing. Phoenix joined the stack as the fifth service (`16e0d88`),
+which completes docs/SPEC.md §6's list — there is deliberately **no** standalone
+OTel collector, though plans/phase-5.md named one; see
+[ADR 0002](decisions/0002-no-otel-collector.md). A chat request now emits the
+trace docs/SPEC.md §11 draws:
+
+    POST /chats/{chat_id}/answer   3068ms
+      chat.request                 3068ms
+        load_conversation             2ms
+        input_guardrails            643ms   allow_with_warning [api_key, email]
+          nemo_rails                643ms
+        context_builder               1ms   message_count=1
+        llm.generate               1532ms   first_token=409ms  29/113 tokens
+        output_guardrails           859ms   allow_with_warning [api_key]
+          nemo_rails                859ms
+        persist_message               5ms
+
+Which immediately paid for itself: **half of a chat request is the two guardrail
+calls**, and nothing before Phase 5 could have told you so.
+
+`model_run` records what every call cost, joined to its trace by `trace_id`, and
+each assistant turn in the UI carries a `trace ↗` link built from it. Verified
+end to end: a message row's `trace_id` resolves in Phoenix to the trace holding
+all seven spans.
+
+Next: Phase 6, evaluation-driven development. It gets `evaluation_case` and
+`evaluation_result`, and `packages/evals` joins the uv workspace (the root
+pyproject lists members explicitly and says evals lands in Phase 6).
 
 Phase 0 tasks, for reference: task 1 `1de4a59`, 2 `1a603eb`, 3 `0c56b7f`,
 4 `2b0e933`, 5 `06b9736`, 6 `6132a66`, 7 `600d919`, 8 `e7bed57`, 9 `872bcb5`.
@@ -85,6 +110,11 @@ One open item, and one resolved note worth keeping:
   `packages/ai_core`, rather than inventing an agent mid-phase. Worth deciding
   before Phase 7 (red teaming), which is the next phase that would want a
   dedicated safety owner.
+
+- **Trace volume is unbounded and unpruned.** Phoenix keeps every span on its
+  volume forever. Harmless now; worth a retention policy before this runs for
+  weeks. `docker compose down -v` is the current answer, which also throws away
+  the database.
 
 - **gitleaks is still inert.** lefthook.yml skips it when the binary is missing,
   and the first credential path now exists, so this is overdue. Arming it means
