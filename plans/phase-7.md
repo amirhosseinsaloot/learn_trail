@@ -15,8 +15,8 @@ Exit criterion (verbatim, docs/SPEC.md):
 ## Tasks
 
 - [x] Adversarial dataset under evals/red_team/: injection, jailbreak, PII leakage, system-prompt extraction, multi-turn bypass (owner: `ai-orchestration`) — commit: `8c4f567`
-- [x] Promptfoo red-team suite + attack-success-rate reporting (owner: `ai-orchestration`) — commit: `PENDING`
-- [x] CI safety gate that blocks merges on red-team regressions (owner: `infra-devops`) — commit: `PENDING`
+- [x] Promptfoo red-team suite + attack-success-rate reporting (owner: `ai-orchestration`) — commit: `39f13d0`
+- [x] CI safety gate that blocks merges on red-team regressions (owner: `infra-devops`) — commit: `39f13d0`
 
 The `red-team` agent this plan named does not exist. That is now three phases in
 a row (`safety-engineer`, `eval-engineer`, `red-team`), all done by
