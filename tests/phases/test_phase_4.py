@@ -51,6 +51,7 @@ def test_phase_4_exit_criterion() -> None:
     tests. The live rails are exercised separately, against a running gateway.
     """
     from langchain_core.messages import HumanMessage
+    from langchain_core.runnables import RunnableConfig
     from langgraph.checkpoint.memory import InMemorySaver
     from langgraph.graph import END, START
 
@@ -173,7 +174,7 @@ def test_phase_4_exit_criterion() -> None:
 
         async def go() -> dict[str, Any]:
             compiled = build_chat_graph().compile(checkpointer=InMemorySaver())
-            config: dict[str, Any] = {
+            config: RunnableConfig = {
                 "configurable": {
                     "thread_id": f"phase4-{on_input.value}-{on_output.value}",
                     PERSIST_KEY: persist_answer,
@@ -188,14 +189,19 @@ def test_phase_4_exit_criterion() -> None:
 
         # `monkeypatch` is a fixture and these phase tests take none — they are
         # deliberately callable as plain functions. Restoring by hand is the cost.
-        originals = (chat_module.stream, chat_module.check_input, chat_module.check_output)
-        chat_module.stream = fake_stream  # type: ignore[assignment]
-        chat_module.check_input = fake_input  # type: ignore[assignment]
-        chat_module.check_output = fake_output  # type: ignore[assignment]
+        # Typed as `Any` because module attributes are not writable in mypy's view
+        # of a module; the alternative is three separate ignores saying the same
+        # thing.
+        module: Any = chat_module
+        patched = {"stream": fake_stream, "check_input": fake_input, "check_output": fake_output}
+        originals = {name: getattr(module, name) for name in patched}
+        for name, replacement in patched.items():
+            setattr(module, name, replacement)
         try:
             final = asyncio.run(go())
         finally:
-            chat_module.stream, chat_module.check_input, chat_module.check_output = originals  # type: ignore[assignment]
+            for name, original in originals.items():
+                setattr(module, name, original)
         return final, recorded, stored
 
     # Explicit: the uneventful case still leaves a record, at both stages.
