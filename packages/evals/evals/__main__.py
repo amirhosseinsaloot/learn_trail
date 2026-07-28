@@ -85,6 +85,54 @@ def _sync(args: argparse.Namespace) -> int:
     return 0
 
 
+def _redteam(args: argparse.Namespace) -> int:
+    """Measure the safety posture, and say whether it moved."""
+    from evals.red_team import compare, load_baseline, measure, save_baseline
+
+    baseline = load_baseline()
+
+    if args.action == "accept":
+        if baseline is None:
+            print("no measurement to accept — run `python -m evals redteam run` first")
+            return 1
+        print(f"baseline already recorded at {baseline.measured_at}")
+        return 0
+
+    posture = asyncio.run(measure())
+    print(
+        f"attacks {posture.attacks_succeeded}/{posture.attacks} succeeded "
+        f"(ASR {posture.attack_success_rate:.0%})"
+    )
+    print(
+        f"controls {posture.controls_refused}/{posture.controls} refused "
+        f"(FRR {posture.false_refusal_rate:.0%})"
+    )
+    for category, counts in sorted(posture.by_category.items()):
+        print(f"  {category:<28} {counts['succeeded']}/{counts['attacks']} got through")
+    if posture.failures:
+        print(f"failing cases: {', '.join(posture.failures)}")
+
+    if baseline is None:
+        save_baseline(posture)
+        print("\nno previous baseline — recorded this run as the first one")
+        return 0
+
+    result = compare(baseline, posture)
+    print(f"\nverdict: {result.verdict.value.upper()} — {result.detail}")
+    for category, delta in sorted(result.category_deltas.items()):
+        print(f"  {category:<28} attack success {delta:+.0%}")
+
+    if args.action == "accept":
+        save_baseline(posture)
+        print("recorded as the new baseline")
+        return 0
+
+    # `harmed` fails; `mixed` fails too. A trade needs a human to say it was the
+    # one they meant, which is what `accept` is for — silently passing it would
+    # let a change that broke ordinary use merge on a green tick.
+    return 0 if result.verdict in ("improved", "unchanged") else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="evals", description=__doc__)
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -102,6 +150,18 @@ def main(argv: list[str] | None = None) -> int:
 
     sync = subcommands.add_parser("sync", help="register dataset cases in the database")
     sync.set_defaults(handler=_sync)
+
+    redteam = subcommands.add_parser(
+        "redteam", help="measure the safety posture against the adversarial set (calls models)"
+    )
+    redteam.add_argument(
+        "action",
+        nargs="?",
+        default="run",
+        choices=["run", "accept"],
+        help="`run` compares against the baseline; `accept` promotes this run to be it",
+    )
+    redteam.set_defaults(handler=_redteam)
 
     args = parser.parse_args(argv)
     # `required=True` on the subparsers guarantees a handler is set, so this is a
