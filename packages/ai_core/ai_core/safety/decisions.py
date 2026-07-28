@@ -177,6 +177,22 @@ class SafetyOutcome(BaseModel):
         return [decision for decision in self.decisions if decision.warns]
 
     @property
+    def categories(self) -> list[str]:
+        """Every concern raised at this stage, deduplicated, in the order found.
+
+        From all decisions that were not a plain allow, including ones that only
+        warned: "blocked for injection, and by the way there is an API key in
+        here" is two facts, and dropping the second because the first was more
+        severe would lose the one the user can still act on.
+        """
+        seen: list[str] = []
+        for decision in self.decisions:
+            if decision.action is SafetyAction.ALLOW:
+                continue
+            seen.extend(c for c in decision.categories if c not in seen)
+        return seen
+
+    @property
     def explanation(self) -> str:
         """Why the interaction was stopped, if it was.
 

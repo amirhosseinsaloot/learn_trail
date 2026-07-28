@@ -20,6 +20,7 @@ from database.models.knowledge import (
     DraftStatus,
     Learning,
     LearningRevision,
+    SafetyEvent,
     SummaryDraft,
 )
 
@@ -32,5 +33,6 @@ __all__ = [
     "LearningRevision",
     "Message",
     "MessageRole",
+    "SafetyEvent",
     "SummaryDraft",
 ]

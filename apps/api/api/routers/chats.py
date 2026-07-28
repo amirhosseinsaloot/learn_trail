@@ -27,8 +27,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload
 
 from ai_core import ChatTurn, CompletionResponse, GatewayError, ModelAlias
-from ai_core.graphs.chat import PERSIST_KEY, ChatState, GraphError
+from ai_core.graphs.chat import PERSIST_KEY, RECORD_SAFETY_KEY, ChatState, GraphError
 from ai_core.graphs.messages import context_to_langchain
+from ai_core.safety.decisions import SafetyOutcome, SafetyStage
 from api import sse
 from api.graph import chat_graph
 from api.schemas import (
@@ -39,7 +40,7 @@ from api.schemas import (
     MessageCreate,
     MessageRead,
 )
-from database.models import Chat, ChatStatus, Message, MessageRole
+from database.models import Chat, ChatStatus, Message, MessageRole, SafetyEvent
 from database.session import session
 
 router = APIRouter(prefix="/chats", tags=["chats"])
@@ -317,11 +318,58 @@ async def stream_answer(chat_id: uuid.UUID, db: Session, graph: ChatGraph) -> St
             sequence_number=next_position,
         )
         db.add(message)
+        await db.flush()
+
+        # The output check ran *before* this message existed, so its events were
+        # written with a null `message_id`. Now that the answer has a row, point
+        # them at it: an auditor asking "what was decided about this message"
+        # should not have to reconstruct the link from timestamps.
+        if output_event_ids:
+            await db.execute(
+                update(SafetyEvent)
+                .where(SafetyEvent.id.in_(output_event_ids))
+                .values(message_id=message.id)
+            )
+
         await db.execute(
             update(Chat).where(Chat.id == chat.id).values(updated_at=func.clock_timestamp())
         )
         await db.commit()
         return str(message.id)
+
+    #: Ids of this request's output-stage events, so `persist_answer` can attach
+    #: them to the message once it has one. Empty for a blocked answer, which is
+    #: the case where the event stands alone as the only record.
+    output_event_ids: list[uuid.UUID] = []
+
+    async def record_safety(outcome: SafetyOutcome) -> None:
+        """Write one row per check, allow or not.
+
+        Committed as soon as the decision is made, not batched to the end of the
+        request: a run that fails afterwards — a dead stream, a gateway error —
+        must still leave behind the record that it was checked. An audit trail
+        that only survives success is not one.
+        """
+        rows = [
+            SafetyEvent(
+                chat_id=chat.id,
+                stage=decision.stage.value,
+                policy_name=decision.policy_name,
+                policy_version=decision.policy_version,
+                action=decision.action.value,
+                severity=decision.severity,
+                # Categories only. `find_pii` deliberately returns no matched
+                # values, and an audit row quoting the credential it found would
+                # have copied the secret into a second place.
+                categories=list(decision.categories),
+                explanation=decision.explanation,
+            )
+            for decision in outcome.decisions
+        ]
+        db.add_all(rows)
+        await db.commit()
+        if outcome.stage is SafetyStage.OUTPUT:
+            output_event_ids.extend(row.id for row in rows)
 
     async def events() -> AsyncIterator[str]:
         state = ChatState(chat_id=str(chat.id), messages=context_to_langchain(context))
@@ -344,6 +392,7 @@ async def stream_answer(chat_id: uuid.UUID, db: Session, graph: ChatGraph) -> St
                 # execution rather than one ever-growing thread.
                 "thread_id": f"{chat.id}:{next_position}",
                 PERSIST_KEY: persist_answer,
+                RECORD_SAFETY_KEY: record_safety,
             }
         }
 
@@ -353,14 +402,44 @@ async def stream_answer(chat_id: uuid.UUID, db: Session, graph: ChatGraph) -> St
             # streamed answer would land as one lump when `generate_answer`
             # finished. The nodes emit on it via `get_stream_writer()`.
             async for mode, payload in graph.astream(state, config=config, stream_mode=["custom"]):
-                if mode == "custom" and "token" in payload:
+                if mode != "custom":
+                    continue
+                if "token" in payload:
                     yield sse.event("token", {"text": payload["token"]})
+                elif "safety" in payload:
+                    # Forwarded as it happens rather than summarised at the end,
+                    # because an output-stage refusal arrives *after* the client
+                    # has already rendered tokens: the sooner it is told to drop
+                    # them, the shorter the window in which they are on screen.
+                    yield sse.event("safety", payload["safety"])
 
             # Read the outcome from the graph rather than from a variable the
             # loop happened to set: the checkpointed state is the record of what
             # ran, and reading it here is the same thing the exit-criterion test
             # inspects.
             final = (await graph.aget_state(config)).values
+
+            # A refusal is an outcome, not an error: the system worked. It gets
+            # its own terminal event so the client can distinguish "we declined"
+            # from "something broke", and never reports it as a failure.
+            blocked_at = final.get("blocked_at")
+            if blocked_at is not None:
+                outcome = final.get(
+                    "output_safety" if blocked_at == SafetyStage.OUTPUT else "input_safety"
+                )
+                yield sse.event(
+                    "blocked",
+                    {
+                        "stage": SafetyStage(blocked_at).value,
+                        "categories": outcome.categories if outcome else [],
+                        "explanation": outcome.explanation if outcome else "",
+                        # Nothing was written. The client must discard whatever it
+                        # streamed, and reloading the chat is what confirms it.
+                        "persisted": False,
+                    },
+                )
+                return
+
             answer: CompletionResponse | None = final.get("answer")
             message_id: str | None = final.get("persisted_message_id")
             if answer is None or message_id is None:

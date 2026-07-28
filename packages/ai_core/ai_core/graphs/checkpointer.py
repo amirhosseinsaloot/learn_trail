@@ -51,6 +51,10 @@ ALLOWED_CHECKPOINT_TYPES: Final = [
     ("ai_core.graphs.summary", "ReviewDecision"),
     ("ai_core.graphs.summary", "SummaryState"),
     ("ai_core.models.aliases", "ModelAlias"),
+    ("ai_core.safety.decisions", "SafetyAction"),
+    ("ai_core.safety.decisions", "SafetyDecision"),
+    ("ai_core.safety.decisions", "SafetyOutcome"),
+    ("ai_core.safety.decisions", "SafetyStage"),
     ("ai_core.schemas.completion", "CompletionResponse"),
     ("ai_core.schemas.summary", "LearningSummary"),
 ]

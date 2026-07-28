@@ -19,17 +19,21 @@ everything.
 from __future__ import annotations
 
 import json
+import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from langgraph.checkpoint.memory import InMemorySaver
+from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai_core.graphs.chat import build_chat_graph
+from ai_core.safety.decisions import SafetyAction, SafetyDecision, SafetyOutcome, SafetyStage
 from api.main import app
+from database.models import SafetyEvent
 from database.session import engine, session
 
 pytestmark = pytest.mark.anyio
@@ -41,8 +45,13 @@ def anyio_backend() -> str:
 
 
 @pytest.fixture
-async def client(anyio_backend: str) -> AsyncIterator[AsyncClient]:
-    """An HTTP client wired to the app, sharing one rolled-back transaction."""
+async def db(anyio_backend: str) -> AsyncIterator[AsyncSession]:
+    """The one session the whole test shares, on a transaction that is rolled back.
+
+    Exposed as its own fixture so a test can read back what a request wrote —
+    `safety_event` rows are written by the graph, never returned by an endpoint,
+    so asserting on them means querying the same transaction the handler used.
+    """
     try:
         connection = await engine().connect()
     except DBAPIError as exc:  # pragma: no cover - depends on the environment
@@ -50,9 +59,21 @@ async def client(anyio_backend: str) -> AsyncIterator[AsyncClient]:
 
     transaction = await connection.begin()
     test_session = AsyncSession(bind=connection, expire_on_commit=False)
+    try:
+        yield test_session
+    finally:
+        await test_session.close()
+        if transaction.is_active:
+            await transaction.rollback()
+        await connection.close()
+
+
+@pytest.fixture
+async def client(db: AsyncSession) -> AsyncIterator[AsyncClient]:
+    """An HTTP client wired to the app, sharing one rolled-back transaction."""
 
     async def override_session() -> AsyncIterator[AsyncSession]:
-        yield test_session
+        yield db
 
     # The override is what keeps the handlers on this transaction. Without it
     # they would open their own sessions against the engine, commit for real, and
@@ -71,10 +92,6 @@ async def client(anyio_backend: str) -> AsyncIterator[AsyncClient]:
             yield http
     finally:
         app.dependency_overrides.clear()
-        await test_session.close()
-        if transaction.is_active:
-            await transaction.rollback()
-        await connection.close()
 
 
 async def _new_chat(client: AsyncClient, title: str | None = "A chat") -> dict[str, object]:
@@ -326,6 +343,54 @@ async def test_no_response_body_mentions_a_user(client: AsyncClient) -> None:
 # contract — what it validates, what it persists, what it emits — and a real model
 # would make them slow, non-deterministic and paid. The live model path is covered
 # by the `slow`-marked test in packages/ai_core.
+
+
+@pytest.fixture(autouse=True)
+def _allow_safety(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Both safety checks pass, unless a test stubs them otherwise.
+
+    Autouse and unconditional: the checks sit on the default path from Phase 4 and
+    each is a real judge-model call. Left unstubbed they would make every endpoint
+    test paid, slow and dependent on the gateway being reachable — and because the
+    rails fail *open*, an unreachable judge would not even fail loudly, it would
+    quietly turn these into tests of the fail-open path.
+    """
+    _stub_safety(monkeypatch)
+
+
+def _stub_safety(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    on_input: SafetyAction = SafetyAction.ALLOW,
+    on_output: SafetyAction = SafetyAction.ALLOW,
+) -> None:
+    from ai_core.graphs import chat as chat_graph_module
+
+    def outcome(stage: SafetyStage, action: SafetyAction) -> SafetyOutcome:
+        if action is SafetyAction.ALLOW:
+            return SafetyOutcome(stage=stage, decisions=[SafetyDecision.allow(stage, "stub", "v1")])
+        return SafetyOutcome(
+            stage=stage,
+            decisions=[
+                SafetyDecision.refuse(
+                    stage,
+                    "stub",
+                    "v1",
+                    action=action,
+                    categories=["testing"],
+                    explanation=f"stubbed {action.value}",
+                )
+            ],
+        )
+
+    async def fake_input(text: str) -> SafetyOutcome:
+        return outcome(SafetyStage.INPUT, on_input)
+
+    async def fake_output(question: str, answer: str) -> SafetyOutcome:
+        return outcome(SafetyStage.OUTPUT, on_output)
+
+    monkeypatch.setattr(chat_graph_module, "check_input", fake_input)
+    monkeypatch.setattr(chat_graph_module, "check_output", fake_output)
 
 
 def _stub_stream(
@@ -608,3 +673,119 @@ async def test_the_context_does_not_double_across_turns(
     # request grows by exactly one question and one answer.
     assert [len(request.messages) for request in seen] == [1, 3, 5]
     assert [turn.content for turn in seen[-1].messages] == ["q1", "ok", "q2", "ok", "q3"]
+
+
+# --- safety ---------------------------------------------------------------------
+
+
+async def test_a_blocked_question_ends_the_stream_with_blocked_not_error(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A refusal is the system working, so it must not look like a failure.
+
+    The client renders these differently — "we declined, here is why" against
+    "something broke, try again" — and collapsing them would teach the user to
+    retry a message that will always be refused.
+    """
+    _stub_stream(monkeypatch, parts=["should never be generated"])
+    _stub_safety(monkeypatch, on_input=SafetyAction.BLOCK)
+    chat_id = await _chat_with_question(client, "something forbidden")
+
+    events = _parse_sse((await client.post(f"/chats/{chat_id}/answer")).text)
+    names = [name for name, _ in events]
+    assert "blocked" in names
+    assert "done" not in names
+    assert "error" not in names
+    assert "token" not in names  # refused before the model was called
+
+    payload = next(data for name, data in events if name == "blocked")
+    assert payload["stage"] == "input"
+    assert payload["persisted"] is False
+
+
+async def test_a_blocked_answer_leaves_no_assistant_message(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The tokens were shown; the transcript stays clean.
+
+    This is the enforcement that matters downstream: a summary is built from
+    messages, so an answer that never becomes a message can never become a
+    Learning (CLAUDE.md invariant #5).
+    """
+    _stub_stream(monkeypatch, parts=["bad ", "answer"])
+    _stub_safety(monkeypatch, on_output=SafetyAction.BLOCK)
+    chat_id = await _chat_with_question(client, "a question")
+
+    events = _parse_sse((await client.post(f"/chats/{chat_id}/answer")).text)
+    assert [name for name, _ in events].count("token") == 2  # already streamed
+    assert next(data for name, data in events if name == "blocked")["stage"] == "output"
+
+    detail = (await client.get(f"/chats/{chat_id}")).json()
+    assert [message["role"] for message in detail["messages"]] == ["user"]
+
+
+async def test_an_allowed_interaction_still_records_its_checks(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch, db: AsyncSession
+) -> None:
+    """ "Checked and fine" must be distinguishable from "never checked"."""
+    _stub_stream(monkeypatch, parts=["an answer"])
+    chat_id = await _chat_with_question(client, "a fine question")
+    await client.post(f"/chats/{chat_id}/answer")
+
+    rows = (
+        (await db.execute(select(SafetyEvent).where(SafetyEvent.chat_id == uuid.UUID(chat_id))))
+        .scalars()
+        .all()
+    )
+    assert {row.stage for row in rows} == {"input", "output"}
+    assert all(row.action == "allow" for row in rows)
+    assert all(row.policy_version for row in rows)
+
+
+async def test_an_output_event_is_linked_to_the_message_it_judged(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch, db: AsyncSession
+) -> None:
+    """The check runs before the row exists, so the link is backfilled on persist.
+
+    Without it an auditor asking "what was decided about this message" would have
+    to reconstruct the answer from timestamps.
+    """
+    _stub_stream(monkeypatch, parts=["an answer"])
+    chat_id = await _chat_with_question(client, "a question")
+    body = (await client.post(f"/chats/{chat_id}/answer")).text
+    message_id = next(data for name, data in _parse_sse(body) if name == "done")["message_id"]
+
+    rows = (
+        (await db.execute(select(SafetyEvent).where(SafetyEvent.chat_id == uuid.UUID(chat_id))))
+        .scalars()
+        .all()
+    )
+    by_stage = {row.stage: row for row in rows}
+    assert str(by_stage["output"].message_id) == message_id
+    # The input check judged the question, not the answer, and claiming otherwise
+    # would make the audit trail say something false.
+    assert by_stage["input"].message_id is None
+
+
+async def test_a_blocked_interaction_is_still_recorded(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch, db: AsyncSession
+) -> None:
+    """The case the table exists for: no message row, so the event is the only trace."""
+    _stub_stream(monkeypatch, parts=["never mind"])
+    _stub_safety(monkeypatch, on_input=SafetyAction.BLOCK)
+    chat_id = await _chat_with_question(client, "something forbidden")
+    await client.post(f"/chats/{chat_id}/answer")
+
+    rows = (
+        (await db.execute(select(SafetyEvent).where(SafetyEvent.chat_id == uuid.UUID(chat_id))))
+        .scalars()
+        .all()
+    )
+    assert [row.action for row in rows] == ["block"]
+    assert rows[0].message_id is None
+
+
+async def _chat_with_question(client: AsyncClient, question: str) -> str:
+    chat_id = (await client.post("/chats", json={"title": "safety"})).json()["id"]
+    await client.post(f"/chats/{chat_id}/messages", json={"role": "user", "content": question})
+    return str(chat_id)

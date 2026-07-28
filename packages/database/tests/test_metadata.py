@@ -23,7 +23,9 @@ from database.config import DEFAULT_DATABASE_URL, database_url
 # they are created by its `setup()`, and `migrations/env.py` filters autogenerate
 # down to the tables in this metadata precisely so Alembic never proposes
 # dropping them.
-EXPECTED_TABLES = frozenset({"chat", "message", "summary_draft", "learning", "learning_revision"})
+EXPECTED_TABLES = frozenset(
+    {"chat", "message", "summary_draft", "learning", "learning_revision", "safety_event"}
+)
 
 
 def test_metadata_declares_exactly_the_expected_tables() -> None:

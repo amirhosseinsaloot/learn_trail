@@ -228,3 +228,63 @@ class LearningRevision(Base):
         UniqueConstraint("learning_id", "revision_number"),
         CheckConstraint("revision_number > 0", name="revision_number_positive"),
     )
+
+
+class SafetyEvent(Base):
+    """One safety decision about one interaction (docs/SPEC.md §8).
+
+    Stored **separately from the content it judged**, which is the point of the
+    table rather than a column on `message`: the message records what was said,
+    this records what the system thought about it, and neither is rewritten to
+    agree with the other. A blocked input has no message row at all, and its
+    safety event is the only trace that the interaction happened — so this table
+    is where "every model interaction has an explicit, testable safety path"
+    becomes auditable after the fact.
+
+    Append-only. A decision that can be edited later is not an audit record.
+    """
+
+    __tablename__ = "safety_event"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+
+    #: Both nullable, and for different reasons. `chat_id` is null for a check
+    #: that ran outside a conversation; `message_id` is null whenever the content
+    #: was never persisted — which is every blocked interaction, and exactly the
+    #: case worth keeping a record of.
+    chat_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("chat.id", ondelete="CASCADE"))
+    message_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("message.id", ondelete="SET NULL")
+    )
+
+    #: `input` or `output` — the same policy can decide differently at each.
+    stage: Mapped[str] = mapped_column(String(16), nullable=False)
+    #: Which check, e.g. `nemo_rails`, `pii_scan`, `size_limit`.
+    policy_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    #: Which version of it. Without this the history is a claim about rules that
+    #: may no longer exist.
+    policy_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    #: One of docs/SPEC.md §8's six actions.
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    severity: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    #: Plural: one message can trip several concerns at once. JSONB rather than a
+    #: join table because these are labels read as a set, never queried across.
+    categories: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    explanation: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint("stage IN ('input', 'output')", name="stage_is_known"),
+        CheckConstraint(
+            "action IN ('allow', 'allow_with_warning', 'redact', 'retry', 'block', "
+            "'require_review')",
+            name="action_is_known",
+        ),
+        CheckConstraint("severity >= 0", name="severity_non_negative"),
+        # The audit query is "what happened recently, worst first".
+        Index("ix_safety_event_recent", "created_at", "severity"),
+    )

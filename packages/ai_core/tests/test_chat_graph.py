@@ -20,16 +20,23 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph import END
 
 from ai_core.graphs import chat as chat_module
 from ai_core.graphs.chat import (
+    BLOCKED,
+    BRANCHING_NODES,
+    CONTINUE,
     NODE_SEQUENCE,
     PERSIST_KEY,
+    RECORD_SAFETY_KEY,
     ChatState,
     GraphError,
     build_chat_graph,
+    route_after_safety,
 )
 from ai_core.models.aliases import ModelAlias
+from ai_core.safety.decisions import SafetyAction, SafetyDecision, SafetyOutcome, SafetyStage
 from ai_core.schemas.completion import CompletionResponse, FinalChunk, TokenChunk
 
 pytestmark = pytest.mark.anyio
@@ -38,6 +45,53 @@ pytestmark = pytest.mark.anyio
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+@pytest.fixture(autouse=True)
+def allow_everything(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Both safety checks pass, unless a test says otherwise.
+
+    Autouse because the checks now sit on the default path and each one is a real
+    model call. Stubbing them here keeps this file's promise — no model, no
+    Postgres — and leaves every existing test asserting what it always asserted.
+    The checks' own logic is tested in test_safety.py; what this file tests is the
+    graph's reaction to their verdicts.
+    """
+    _stub_safety(monkeypatch)
+
+
+def _outcome(stage: SafetyStage, action: SafetyAction = SafetyAction.ALLOW) -> SafetyOutcome:
+    if action is SafetyAction.ALLOW:
+        return SafetyOutcome(stage=stage, decisions=[SafetyDecision.allow(stage, "stub", "v1")])
+    return SafetyOutcome(
+        stage=stage,
+        decisions=[
+            SafetyDecision.refuse(
+                stage,
+                "stub",
+                "v1",
+                action=action,
+                categories=["testing"],
+                explanation=f"stubbed {action.value}",
+            )
+        ],
+    )
+
+
+def _stub_safety(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    on_input: SafetyAction = SafetyAction.ALLOW,
+    on_output: SafetyAction = SafetyAction.ALLOW,
+) -> None:
+    async def fake_input(text: str) -> SafetyOutcome:
+        return _outcome(SafetyStage.INPUT, on_input)
+
+    async def fake_output(question: str, answer: str) -> SafetyOutcome:
+        return _outcome(SafetyStage.OUTPUT, on_output)
+
+    monkeypatch.setattr(chat_module, "check_input", fake_input)
+    monkeypatch.setattr(chat_module, "check_output", fake_output)
 
 
 def _answer(text: str = "an answer", finish_reason: str = "stop") -> CompletionResponse:
@@ -73,7 +127,7 @@ def _stub_gateway(
 
 
 async def _run(
-    state: ChatState, *, thread: str = "t1"
+    state: ChatState, *, thread: str = "t1", recorded: list[SafetyOutcome] | None = None
 ) -> tuple[dict[str, Any], list[str], list[str]]:
     """Run the graph to completion; return final values, tokens, and stored ids."""
     stored: list[str] = []
@@ -82,8 +136,18 @@ async def _run(
         stored.append(answer.text)
         return "stored-id"
 
+    async def record_safety(outcome: SafetyOutcome) -> None:
+        if recorded is not None:
+            recorded.append(outcome)
+
     graph = build_chat_graph().compile(checkpointer=InMemorySaver())
-    config: RunnableConfig = {"configurable": {"thread_id": thread, PERSIST_KEY: persist_answer}}
+    config: RunnableConfig = {
+        "configurable": {
+            "thread_id": thread,
+            PERSIST_KEY: persist_answer,
+            RECORD_SAFETY_KEY: record_safety,
+        }
+    }
 
     tokens: list[str] = []
     async for mode, payload in graph.astream(state, config=config, stream_mode=["custom"]):
@@ -100,24 +164,57 @@ async def _run(
 # --- shape ---------------------------------------------------------------------
 
 
-def test_the_graph_is_the_five_nodes_the_spec_names() -> None:
+def test_the_graph_is_the_nodes_the_spec_names() -> None:
     compiled = build_chat_graph().compile()
     nodes = [n for n in compiled.get_graph().nodes if not n.startswith("__")]
     assert nodes == list(NODE_SEQUENCE)
 
 
-def test_the_graph_has_no_branches() -> None:
-    """Determinism is the Phase 2 criterion, so it is asserted structurally.
+def test_only_the_safety_checks_branch() -> None:
+    """Phase 2 asserted *no* node had more than one outgoing edge.
 
-    Every node has exactly one outgoing edge. A conditional edge added later —
-    Phase 4's safety pipeline can block, Phase 10 routes between models — must
-    fail this test and be a deliberate change to it, not a silent one.
+    Phase 4 changes that assertion rather than dropping it, which is what the
+    original test existed to force. The rule is now narrower and says more: the
+    two safety checks branch, and nothing else does. A conditional edge added
+    anywhere else — Phase 10's model routing, say — still has to come here and
+    argue for itself.
     """
     compiled = build_chat_graph().compile()
     outgoing: dict[str, int] = {}
     for edge in compiled.get_graph().edges:
         outgoing[edge.source] = outgoing.get(edge.source, 0) + 1
-    assert all(count == 1 for count in outgoing.values()), outgoing
+
+    branching = {source for source, count in outgoing.items() if count > 1}
+    assert branching == set(BRANCHING_NODES), outgoing
+    assert all(outgoing[node] == 2 for node in BRANCHING_NODES), outgoing
+
+
+def test_a_blocked_check_routes_to_the_end() -> None:
+    """The refusal edge is the enforcement, so it is asserted structurally too.
+
+    `route_after_safety` is a pure function of state: this pins both answers
+    without running the graph or spending a model call.
+    """
+    blocked = ChatState(chat_id="c", blocked_at=SafetyStage.INPUT)
+    assert route_after_safety(blocked) == BLOCKED
+    assert route_after_safety(ChatState(chat_id="c")) == CONTINUE
+
+
+def test_a_blocked_answer_cannot_reach_persistence() -> None:
+    """The one structural claim the whole phase rests on.
+
+    Not "persist checks a flag" — `persist` is not reachable from a blocked
+    output check at all. A refused answer leaves no message row, so no summary,
+    draft or Learning can ever be derived from it (CLAUDE.md invariant #5).
+    """
+    graph = build_chat_graph().compile().get_graph()
+    from_output = {edge.target for edge in graph.edges if edge.source == "output_safety_check"}
+    assert from_output == {"persist", END}
+
+    blocked_edges = [
+        edge for edge in graph.edges if edge.source in BRANCHING_NODES and edge.data == BLOCKED
+    ]
+    assert {edge.target for edge in blocked_edges} == {END}
 
 
 # --- execution -----------------------------------------------------------------
@@ -242,3 +339,112 @@ async def test_the_graph_will_not_run_without_somewhere_to_persist(
     with pytest.raises(GraphError, match=PERSIST_KEY):
         async for _ in graph.astream(state, config=config, stream_mode=["custom"]):
             pass
+
+
+# --- safety --------------------------------------------------------------------
+
+
+async def test_a_blocked_question_never_reaches_the_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The input check is placed early precisely so a refusal costs nothing."""
+    seen = _stub_gateway(monkeypatch, parts=["should not happen"])
+    _stub_safety(monkeypatch, on_input=SafetyAction.BLOCK)
+
+    final, tokens, stored = await _run(
+        ChatState(chat_id="c1", messages=[HumanMessage(content="something forbidden")])
+    )
+
+    assert seen == []  # no generation request was ever built
+    assert tokens == []
+    assert stored == []
+    assert final["blocked_at"] == SafetyStage.INPUT
+
+
+async def test_a_blocked_answer_is_not_stored(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tokens escaped; the transcript did not.
+
+    This is the honest shape of streaming plus an output check, and asserting it
+    keeps the trade-off documented in behaviour rather than only in a comment.
+    """
+    _stub_gateway(monkeypatch, parts=["bad ", "answer"])
+    _stub_safety(monkeypatch, on_output=SafetyAction.BLOCK)
+
+    final, tokens, stored = await _run(
+        ChatState(chat_id="c1", messages=[HumanMessage(content="a question")])
+    )
+
+    assert tokens == ["bad ", "answer"]  # already shown, unavoidably
+    assert stored == []  # but never persisted
+    # Absent rather than None: `persist` never ran, so nothing ever wrote the key.
+    assert final.get("persisted_message_id") is None
+    assert final["blocked_at"] == SafetyStage.OUTPUT
+
+
+async def test_a_blocked_answer_tells_the_caller_to_discard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Because the caller has already rendered it, silence would leave it on screen."""
+    _stub_gateway(monkeypatch, parts=["bad"])
+    _stub_safety(monkeypatch, on_output=SafetyAction.BLOCK)
+
+    graph = build_chat_graph().compile(checkpointer=InMemorySaver())
+    config: RunnableConfig = {"configurable": {"thread_id": "discard", PERSIST_KEY: _unused}}
+    events: list[dict[str, Any]] = []
+    async for mode, payload in graph.astream(
+        ChatState(chat_id="c1", messages=[HumanMessage(content="q")]),
+        config=config,
+        stream_mode=["custom"],
+    ):
+        if mode == "custom" and isinstance(payload, dict) and "safety" in payload:
+            events.append(payload["safety"])
+
+    assert [event["stage"] for event in events] == [SafetyStage.OUTPUT.value]
+    assert events[0]["discard"] is True
+
+
+async def test_both_stages_are_recorded_when_nothing_is_wrong(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The exit criterion is an *explicit* path, not merely a path that stops bad things.
+
+    An allowed interaction that recorded nothing would be indistinguishable from
+    one that was never checked.
+    """
+    _stub_gateway(monkeypatch, parts=["fine"])
+    recorded: list[SafetyOutcome] = []
+    await _run(ChatState(chat_id="c1", messages=[HumanMessage(content="q")]), recorded=recorded)
+
+    assert [outcome.stage for outcome in recorded] == [SafetyStage.INPUT, SafetyStage.OUTPUT]
+    assert all(not outcome.blocks for outcome in recorded)
+
+
+async def test_a_warning_does_not_stop_the_answer(monkeypatch: pytest.MonkeyPatch) -> None:
+    """PII in a question is the user's own data; refusing to help with it would be wrong."""
+    _stub_gateway(monkeypatch, parts=["here you go"])
+    _stub_safety(monkeypatch, on_input=SafetyAction.ALLOW_WITH_WARNING)
+    recorded: list[SafetyOutcome] = []
+
+    final, _tokens, stored = await _run(
+        ChatState(chat_id="c1", messages=[HumanMessage(content="my key is sk-...")]),
+        recorded=recorded,
+    )
+
+    assert stored == ["here you go"]
+    assert final["blocked_at"] is None
+    assert recorded[0].action is SafetyAction.ALLOW_WITH_WARNING
+
+
+async def test_the_graph_runs_without_a_recorder(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A missing audit sink must not disable the check that protects the user."""
+    _stub_gateway(monkeypatch, parts=["ok"])
+    graph = build_chat_graph().compile(checkpointer=InMemorySaver())
+    config: RunnableConfig = {"configurable": {"thread_id": "no-recorder", PERSIST_KEY: _unused}}
+    final = await graph.ainvoke(
+        ChatState(chat_id="c1", messages=[HumanMessage(content="q")]), config=config
+    )
+    assert final["persisted_message_id"] == "stored-id"
+
+
+async def _unused(answer: CompletionResponse) -> str:
+    return "stored-id"
