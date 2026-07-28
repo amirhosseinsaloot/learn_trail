@@ -18,6 +18,17 @@ dependencies = [
     # forbids `import openai` everywhere except ai_core/models/gateway.py, which
     # is the only module here that imports it.
     "langgraph-checkpoint-postgres>=2.0",
+    # LlamaIndex, for chunking and node metadata only (Phase 8, docs/SPEC.md §7).
+    # `llama-index-core` rather than the `llama-index` metapackage: the latter
+    # pulls readers, agents and a dozen integrations this project has no use for,
+    # and every one of them is a dependency to audit.
+    #
+    # Its vector store and query engine are deliberately NOT used. Storage is
+    # SQLAlchemy + pgvector like every other table, so `packages/database` stays
+    # the single owner of schema and Alembic stays the single owner of migrations
+    # — LlamaIndex's store creates and alters its own tables, which would put two
+    # things in charge of the same database.
+    "llama-index-core>=0.14",
     "nemoguardrails>=0.23",
     "openai>=1.60",
     # Tracing (Phase 5, docs/SPEC.md §11). The SDK and the OTLP exporter, and

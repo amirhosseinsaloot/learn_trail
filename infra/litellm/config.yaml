@@ -77,6 +77,30 @@ model_list:
       model: openai/gpt-4o-mini
       api_key: os.environ/OPENAI_API_KEY
 
+  # ---------------------------------------------------------------------------
+  # learning-embedding — vectors for semantic search over approved Learnings
+  # (Phase 8). An alias like any other: nothing in the application names
+  # `text-embedding-3-small`, so swapping to a local model in Phase 11 is an edit
+  # to this block alone (CLAUDE.md invariant #2).
+  #
+  # `text-embedding-3-small` at 1536 dimensions. The `-large` model scores better
+  # on retrieval benchmarks and costs 6.5x more per token for vectors that are
+  # twice as wide — which doubles the index size and the memory every query
+  # touches. For a personal library that will hold hundreds of Learnings rather
+  # than millions, that is a poor trade.
+  #
+  # **Changing this alias is a breaking change, not a tuning knob.** Embeddings
+  # from two different models are not comparable: a library indexed with one and
+  # queried with another returns confident nonsense, because the vectors occupy
+  # different spaces. `learning_chunk.embedding_model` records which model
+  # produced each row so a mismatch is detectable, and re-indexing is the only
+  # correct response to changing it.
+  # ---------------------------------------------------------------------------
+  - model_name: learning-embedding
+    litellm_params:
+      model: openai/text-embedding-3-small
+      api_key: os.environ/OPENAI_API_KEY
+
 litellm_settings:
   # Reject a request naming a parameter the target provider does not accept,
   # rather than silently discarding it. `drop_params: true` is the common default

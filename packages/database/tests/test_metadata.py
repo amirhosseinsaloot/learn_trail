@@ -34,6 +34,7 @@ EXPECTED_TABLES = frozenset(
         "model_run",
         "evaluation_case",
         "evaluation_result",
+        "learning_chunk",
     }
 )
 

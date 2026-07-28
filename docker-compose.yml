@@ -47,7 +47,17 @@ services:
   # through Alembic revisions, starting in Phase 1.
   # ---------------------------------------------------------------------------
   postgres:
-    image: postgres:18-alpine
+    # pgvector's own image, not `postgres:18-alpine`, from Phase 8. The extension
+    # ships as a compiled shared library, so it has to be present in the image —
+    # `CREATE EXTENSION vector` fails on stock Postgres however the migration is
+    # written, and docs/SPEC.md §17 names pgvector as the vector store.
+    #
+    # Same Postgres major (18), so the existing volume is read without a dump and
+    # restore. The base OS does change (alpine/musl -> debian/glibc); the cluster
+    # was initialised with `--locale=C`, which both libcs implement identically,
+    # so there is no collation to rebuild. A cluster created with a real locale
+    # would have needed `REINDEX` here.
+    image: pgvector/pgvector:0.8.5-pg18
     environment:
       POSTGRES_USER: learntrail
       POSTGRES_PASSWORD: learntrail

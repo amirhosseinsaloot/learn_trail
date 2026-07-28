@@ -5,6 +5,10 @@ description = "LearnTrail persistence layer: SQLAlchemy metadata + Alembic migra
 readme = "../../README.md"
 requires-python = ">=3.12"
 dependencies = [
+    # The SQLAlchemy column type for pgvector (Phase 8). Only the type mapping
+    # lives here — the extension itself is in the Postgres image, and the index
+    # is created by a migration. This package stays the one that owns schema.
+    "pgvector>=0.5",
     "alembic>=1.16",
     # Driver choice: psycopg 3 (binary wheel), NOT asyncpg + psycopg2.
     # docs/SPEC.md §6 pairs an async FastAPI app with Alembic migrations, and
