@@ -1,10 +1,10 @@
 # State
 
-Current phase: **Phase 3 is COMPLETE. Phase 4 — Safety pipeline is next**
-(see [plans/phase-4.md](../plans/phase-4.md)); nothing in Phase 4 has been
+Current phase: **Phase 4 is COMPLETE. Phase 5 — Observability is next**
+(see [plans/phase-5.md](../plans/phase-5.md)); nothing in Phase 5 has been
 started.
 
-`make status` reports **Phase 0, 1, 2 and 3 PASS**. Phases 4–12 are red, as
+`make status` reports **Phase 0, 1, 2, 3 and 4 PASS**. Phases 5–12 are red, as
 designed.
 
 All six Phase 1 tasks: `chat`+`message` tables and the async session `421feb8`,
@@ -33,14 +33,30 @@ and promoted to a `learning` **only** by an explicit approval that resumes the
 graph's interrupt. Every Learning carries a revision history distinguishing text
 that came from a model draft (`model`) from text the user wrote (`human`).
 
-Next: Phase 4, the safety pipeline. It attaches to the chat graph — docs/SPEC.md
-§8's input checks belong in `validate_input` and the output checks after
-`generate_answer`, both of which already exist as nodes for that reason. Note it
-will add the first **conditional** edge to the chat graph, which
-`packages/ai_core/tests/test_chat_graph.py` asserts against today: that test must
-be changed deliberately, not deleted. Layers 4 and 5 already exist from Phase 3
-(Guardrails validators, Pydantic schemas); Phase 4 adds layers 1–3 and the
-`safety_event` table.
+Phase 4 added the safety pipeline (`bf0fbdf`, `076497f`, and the UI/phase-test
+commit). A chat request now walks seven nodes —
+`validate_input -> input_safety_check -> build_context -> choose_model ->
+generate_answer -> output_safety_check -> persist` — with the graph's **first two
+conditional edges**, both routing a refusal to END. `test_chat_graph.py`'s
+no-branches assertion was replaced, deliberately, by a narrower one: only the two
+safety checks branch, and a third branch anywhere has to argue for itself.
+
+Every decision is written to `safety_event`, allow included — "checked and fine"
+has to be distinguishable from "never checked", which is what the criterion means
+by *explicit*. Verified live: a prompt injection is blocked at the input stage
+with zero tokens generated and no message row; a benign question streams and
+persists; an API key plus an email warns at both stages and is answered anyway.
+
+Three limits are real and carried forward, all documented in
+[plans/phase-4.md](../plans/phase-4.md): the output check runs *after* tokens have
+streamed (never persisted, client told to discard); PII detection is regex, so it
+finds structured identifiers and not names; and the rails **fail open** — a judge
+model that is down allows the message with a warning recorded rather than taking
+the product down with it.
+
+Next: Phase 5, observability. Note it will want `model_run`, which the chat
+graph's `persist` node is already the natural home for, and Phoenix/OTel wiring
+in `infra/`.
 
 Phase 0 tasks, for reference: task 1 `1de4a59`, 2 `1a603eb`, 3 `0c56b7f`,
 4 `2b0e933`, 5 `06b9736`, 6 `6132a66`, 7 `600d919`, 8 `e7bed57`, 9 `872bcb5`.
@@ -64,6 +80,12 @@ One open item, and one resolved note worth keeping:
   *created*, so a changed `.env` needs
   `docker compose up -d --force-recreate litellm` — a plain `restart` keeps the
   old environment and the change looks like it did nothing.
+- **The plan's `safety-engineer` agent was never created.** Phase 4's rails and
+  validators were built by `ai-orchestration`, which already owns
+  `packages/ai_core`, rather than inventing an agent mid-phase. Worth deciding
+  before Phase 7 (red teaming), which is the next phase that would want a
+  dedicated safety owner.
+
 - **gitleaks is still inert.** lefthook.yml skips it when the binary is missing,
   and the first credential path now exists, so this is overdue. Arming it means
   installing the binary first, then deleting the `if`/`else`/`fi` guard as

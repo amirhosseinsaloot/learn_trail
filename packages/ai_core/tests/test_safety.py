@@ -120,6 +120,32 @@ def test_the_explanation_names_only_the_blocking_reasons() -> None:
         ],
     )
     assert outcome.explanation == "looks like an injection"
+    # `notice` is the wider one, for the banner that also has to explain warnings.
+    assert outcome.notice == "found an email; looks like an injection"
+
+
+def test_a_warned_outcome_still_has_something_to_say() -> None:
+    """`explanation` is empty when nothing blocked — that is what `notice` is for.
+
+    Without it a PII warning would reach the UI with no text, and the banner
+    would fall back to "a safety check flagged this turn", which tells the user
+    nothing they can act on.
+    """
+    outcome = SafetyOutcome(
+        stage=INPUT,
+        decisions=[
+            SafetyDecision.refuse(
+                INPUT,
+                "pii",
+                "v1",
+                action=SafetyAction.ALLOW_WITH_WARNING,
+                categories=["email"],
+                explanation="this text appears to contain an email address",
+            )
+        ],
+    )
+    assert outcome.explanation == ""
+    assert outcome.notice == "this text appears to contain an email address"
 
 
 def test_a_decision_is_immutable() -> None:

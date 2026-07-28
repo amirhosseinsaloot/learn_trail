@@ -93,10 +93,10 @@ Reading the diagram:
 |---|---|---|
 | PostgreSQL, backend, frontend containers | Phase 0 | **built** |
 | FastAPI app object, empty SQLAlchemy metadata, Alembic env | Phase 0 | **built** |
-| LiteLLM gateway + first cloud model + chat/message tables | Phase 1 | *planned* |
-| LangGraph workflow + Postgres checkpointer | Phase 2 | *planned* |
-| Structured summary drafts + approval (Pydantic AI) | Phase 3 | *planned* |
-| Safety pipeline (NeMo Guardrails, Guardrails AI) | Phase 4 | *planned* |
+| LiteLLM gateway + first cloud model + chat/message tables | Phase 1 | **built** |
+| LangGraph workflow + Postgres checkpointer | Phase 2 | **built** |
+| Structured summary drafts + approval (Pydantic AI) | Phase 3 | **built** |
+| Safety pipeline (NeMo Guardrails, Guardrails AI) | Phase 4 | **built** |
 | OTel + Phoenix tracing | Phase 5 | *planned* |
 | Evaluation (DeepEval, Promptfoo, Ragas) | Phase 6 | *planned* |
 | Red teaming | Phase 7 | *planned* |
@@ -123,24 +123,35 @@ FastAPI: validate body (Pydantic), open SSE stream
         ▼
 LangGraph invocation, checkpointed per chat thread
         │
-        ├─ validate_input ──── size/format, injection + jailbreak checks,
-        │                      content classification, PII/secret detection
-        ├─ build_context ───── working context: which messages and which
-        │                      approved learnings to send (see §6)
-        ├─ choose_model ────── pick an alias: learning-fast vs learning-deep
-        ├─ generate_answer ─── LiteLLM call, tokens streamed back through SSE
-        ├─ output_checks ───── structured-output validation, content check,
-        │                      policy + quality checks
-        └─ persist ─────────── message rows, model_run metadata, safety_events
-        │
+        ├─ validate_input ───────── the request is answerable at all
+        ├─ input_safety_check ───── size, NeMo rails (injection + jailbreak),
+        │                           PII/secret detection ──┐ refused → END
+        ├─ build_context ────────── working context: which messages and which
+        │                           approved learnings to send (see §6)
+        ├─ choose_model ─────────── pick an alias: learning-fast vs learning-deep
+        ├─ generate_answer ──────── LiteLLM call, tokens streamed back through SSE
+        ├─ output_safety_check ──── rails over the answer in context of the
+        │                           question, PII scan ────┐ refused → END
+        └─ persist ──────────────── message rows, safety_event backfill
+        │                           (model_run metadata arrives in Phase 5)
         ▼
 Stream ends. Nothing here creates an approved Learning.
 ```
 
+The two refusal edges are the graph's only branches, and both end the run rather
+than setting a flag for a later node to consult — so `persist` is *unreachable*
+from a refusal. A blocked answer never enters the transcript, and the transcript
+is what summaries, drafts and Learnings are built from.
+
+`output_safety_check` runs after tokens have already streamed. That is deliberate:
+buffering the answer to check it first would cost the streaming the product is
+built around. The guarantee is not "you never see it" but "it is never kept" —
+and the stream carries a `discard` signal so the client drops what it drew.
+
 The path degrades gracefully backwards: in **Phase 1** it is a direct LiteLLM call
-from the endpoint with no graph; Phase 2 replaces that call with the graph;
-Phase 4 fills in the real safety nodes. Each phase substitutes a real
-implementation for a simpler one at the same seam.
+from the endpoint with no graph; Phase 2 replaced that call with the graph;
+Phase 4 added the safety nodes and the first conditional edges. Each phase
+substitutes a real implementation for a simpler one at the same seam.
 
 ### Learning approval — the human gate
 

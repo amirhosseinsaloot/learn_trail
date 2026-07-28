@@ -193,6 +193,23 @@ class SafetyOutcome(BaseModel):
         return seen
 
     @property
+    def notice(self) -> str:
+        """Why the user is being told anything at all.
+
+        Wider than `explanation`: every check that was not a plain allow, warnings
+        included. A blocked outcome has an `explanation`; a *warned* one does not,
+        and reporting only the blocking reasons would leave a warning banner with
+        nothing to say — which is how "your message contains an API key" becomes
+        the useless "a safety check flagged this turn".
+        """
+        reasons = [
+            decision.explanation
+            for decision in self.decisions
+            if decision.action is not SafetyAction.ALLOW and decision.explanation
+        ]
+        return "; ".join(reasons)
+
+    @property
     def explanation(self) -> str:
         """Why the interaction was stopped, if it was.
 

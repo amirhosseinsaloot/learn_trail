@@ -16,7 +16,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SummaryReview } from "@/components/SummaryReview";
 import { API_BASE_URL, api, type Chat, type ChatDetail, type SummaryDraft } from "@/lib/api/client";
-import { type AnswerDone, streamAnswer } from "@/lib/api/stream";
+import { type AnswerBlocked, type SafetyNotice, streamAnswer } from "@/lib/api/stream";
 
 export default function ChatPage() {
   const [chats, setChats] = useState<readonly Chat[]>([]);
@@ -29,6 +29,9 @@ export default function ChatPage() {
   /** The draft awaiting review for the open chat, if there is one. */
   const [draft, setDraft] = useState<SummaryDraft | null>(null);
   const [summarising, setSummarising] = useState(false);
+  /** Safety checks that had something to say about the turn in progress. */
+  const [warnings, setWarnings] = useState<readonly SafetyNotice[]>([]);
+  const [blocked, setBlocked] = useState<AnswerBlocked | null>(null);
 
   const refreshChats = useCallback(async () => {
     const { data, error } = await api.GET("/chats", {});
@@ -72,6 +75,10 @@ export default function ChatPage() {
 
     setBusy(true);
     setNotice(null);
+    // Per turn, not per session: a warning about the previous question would
+    // read as a warning about this one.
+    setWarnings([]);
+    setBlocked(null);
     try {
       // A chat may not exist yet: the first question creates one. It stays
       // untitled — titles are generated from the conversation later
@@ -104,7 +111,7 @@ export default function ChatPage() {
       setStreaming("");
 
       let received = "";
-      const finished: AnswerDone | null = await streamAnswer(API_BASE_URL, chat.id, {
+      const result = await streamAnswer(API_BASE_URL, chat.id, {
         onToken: (fragment) => {
           received += fragment;
           setStreaming(received);
@@ -112,17 +119,29 @@ export default function ChatPage() {
         onError: (detail) => {
           setNotice(detail);
         },
+        onSafety: (safety) => {
+          setWarnings((previous) => [...previous, safety]);
+          if (safety.discard === true) {
+            // Pull it off the screen the moment the refusal arrives, rather than
+            // waiting for the stream to close. The backend cannot un-send tokens
+            // it has already written, so the shortest possible window is the most
+            // this layer can offer — and it is worth taking.
+            received = "";
+            setStreaming(null);
+          }
+        },
       });
 
       setStreaming(null);
+      if (result.status === "blocked") setBlocked(result.blocked);
       // Re-read from the backend rather than appending the accumulated text
       // locally. The database is the source of truth, and re-reading is what
       // makes the screen show what was actually persisted rather than what
-      // happened to arrive.
+      // happened to arrive — which for a blocked answer is nothing at all.
       await openConversation(chat.id);
       await refreshChats();
 
-      if (finished?.truncated === true) {
+      if (result.status === "done" && result.done.truncated) {
         setNotice("that answer hit the token limit and is cut off");
       }
     } finally {
@@ -205,6 +224,8 @@ export default function ChatPage() {
             {notice}
           </p>
         )}
+
+        <SafetyPanel blocked={blocked} warnings={warnings} />
 
         {draft !== null && (
           <SummaryReview
@@ -392,5 +413,73 @@ function Composer({
         {busy ? "Answering…" : "Send"}
       </button>
     </form>
+  );
+}
+
+/**
+ * What the safety pipeline decided about this turn (docs/SPEC.md §8).
+ *
+ * A refusal is shown differently from an error, and the difference is not
+ * cosmetic: an error means "try again", a refusal means "this will be refused
+ * again". Colouring them the same would teach the user to retry a message that
+ * cannot succeed.
+ *
+ * The categories are shown; the matched text is not, and cannot be — the backend
+ * sends categories only, so that an API key found in a message is never copied
+ * into a second place.
+ */
+function SafetyPanel({
+  blocked,
+  warnings,
+}: {
+  readonly blocked: AnswerBlocked | null;
+  readonly warnings: readonly SafetyNotice[];
+}) {
+  // A block already has its own panel, so re-listing the check that caused it
+  // below would say the same thing twice.
+  const advisories = warnings.filter((notice) => notice.discard !== true && blocked === null);
+  if (blocked === null && advisories.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-2">
+      {blocked !== null && (
+        <section
+          role="alert"
+          className="rounded border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-100"
+        >
+          <p className="font-medium">
+            {blocked.stage === "input"
+              ? "That question was not sent to the model."
+              : "That answer was withheld."}
+          </p>
+          <p className="pt-1 text-rose-200/80">
+            {blocked.explanation === "" ? "A safety check refused this turn." : blocked.explanation}
+          </p>
+          {blocked.categories.length > 0 && (
+            <p className="pt-1 text-xs uppercase tracking-widest text-rose-300/70">
+              {blocked.categories.join(" · ")}
+            </p>
+          )}
+          <p className="pt-1 text-xs text-rose-300/70">
+            Nothing was saved to this conversation, so it cannot reach a Learning.
+          </p>
+        </section>
+      )}
+
+      {advisories.map((notice) => (
+        <section
+          key={`${notice.stage}-${notice.categories.join(",")}`}
+          className="rounded border border-amber-500/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-200"
+        >
+          <p>
+            {notice.explanation === "" ? "A safety check flagged this turn." : notice.explanation}
+          </p>
+          <p className="pt-1 text-xs text-amber-300/70">
+            Answered anyway — this is a warning, not a refusal. Worth checking before you approve
+            anything from this conversation as a Learning.
+          </p>
+        </section>
+      ))}
+    </div>
   );
 }

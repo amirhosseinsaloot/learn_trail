@@ -180,7 +180,9 @@ async def input_safety_check(state: ChatState, config: RunnableConfig) -> dict[s
                     "stage": SafetyStage.INPUT.value,
                     "action": outcome.action.value,
                     "categories": outcome.categories,
-                    "explanation": outcome.explanation,
+                    # `notice`, not `explanation`: this fires for warnings too,
+                    # and `explanation` deliberately names only blocking reasons.
+                    "explanation": outcome.notice,
                 }
             }
         )
@@ -280,7 +282,7 @@ async def output_safety_check(state: ChatState, config: RunnableConfig) -> dict[
                     "stage": SafetyStage.OUTPUT.value,
                     "action": outcome.action.value,
                     "categories": outcome.categories,
-                    "explanation": outcome.explanation,
+                    "explanation": outcome.notice,
                     # The caller has already rendered tokens from this answer. It
                     # must be told to drop them, not merely warned.
                     "discard": outcome.blocks,
