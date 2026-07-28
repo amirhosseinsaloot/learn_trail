@@ -17,6 +17,12 @@ dependencies = [
     "learntrail-evals",
 ]
 
+# `uv sync --extra judges` is resolved against the *root* project, not against a
+# workspace member — so the member's own extra is unreachable from the documented
+# command without this re-export. `make evals` runs exactly that command.
+[project.optional-dependencies]
+judges = ["learntrail-evals[judges]"]
+
 # Root is an environment/tooling project, not an installable distribution:
 # no build backend, nothing to build. Application code lives in apps/ and
 # packages/, which get their own pyproject.toml as they land.
@@ -53,6 +59,11 @@ dev = [
     "mypy>=2.3,<3",
     "pytest>=9.1",
     "ruff>=0.16,<0.17",
+    # Phase 6's exit-criterion test reads .github/workflows/evaluation-gate.yml to
+    # assert the gate is actually wired to a merge. PyYAML arrives transitively
+    # (LiteLLM, NeMo); the *stubs* do not, and without them `make type-py` fails
+    # on the one file that parses the workflow.
+    "types-PyYAML>=6.0",
 ]
 
 # --------------------------------------------------------------------------
@@ -141,12 +152,16 @@ ignore_missing_imports = true
 module = ["deepeval.*"]
 ignore_missing_imports = true
 
-# `GatewayJudge` subclasses `DeepEvalBaseLLM`, which is `Any` to mypy for the
-# reason above. Scoped to the one module that does it, so nothing else silently
-# loses subclass checking.
+# `GatewayJudge` subclasses `DeepEvalBaseLLM`. Whether that base is `Any` or a
+# partially-typed class depends on whether the optional `judges` extra is
+# installed, so this module has to type-check both ways: `disallow_subclassing_any`
+# covers the uninstalled case, `disallow_untyped_calls` the installed one (the
+# base's `__init_subclass__` is untyped). Scoped to the one module that subclasses
+# it, so nothing else silently loses either check.
 [[tool.mypy.overrides]]
 module = ["evals.judge"]
 disallow_subclassing_any = false
+disallow_untyped_calls = false
 
 [[tool.mypy.overrides]]
 module = ["ai_core.safety.summary_validators"]

@@ -1,10 +1,10 @@
 # State
 
-Current phase: **Phase 5 is COMPLETE. Phase 6 — Evaluation-driven development is
-next** (see [plans/phase-6.md](../plans/phase-6.md)); nothing in Phase 6 has been
+Current phase: **Phase 6 is COMPLETE. Phase 7 — Red teaming is next**
+(see [plans/phase-7.md](../plans/phase-7.md)); nothing in Phase 7 has been
 started.
 
-`make status` reports **Phase 0, 1, 2, 3, 4 and 5 PASS**. Phases 6–12 are red, as
+`make status` reports **Phase 0 through 6 PASS**. Phases 7–12 are red, as
 designed.
 
 All six Phase 1 tasks: `chat`+`message` tables and the async session `421feb8`,
@@ -79,9 +79,32 @@ each assistant turn in the UI carries a `trace ↗` link built from it. Verified
 end to end: a message row's `trace_id` resolves in Phoenix to the trace holding
 all seven spans.
 
-Next: Phase 6, evaluation-driven development. It gets `evaluation_case` and
-`evaluation_result`, and `packages/evals` joins the uv workspace (the root
-pyproject lists members explicitly and says evals lands in Phase 6).
+Phase 6 added evaluation. `packages/evals` joined the uv workspace with 16
+curated golden cases (conversations, summaries, safety), a DeepEval suite judged
+through the gateway on `safety-judge`, `evaluation_case`/`evaluation_result`, a
+Promptfoo comparison config, and — the phase's real deliverable — a **merge
+gate**.
+
+The gate is a fingerprint over the prompt/model configuration (the prompt library,
+the alias-to-model mapping, the alias enum, the safety rails' prompts) compared
+against the one recorded by the last *passing* run. It answers offline, in
+milliseconds, with no model call: `make evals-gate`. That matters, because a check
+that cost money to perform is one people learn to skip, which is the exact failure
+the criterion exists to prevent.
+
+Current state: all 26 results pass, recorded in
+`packages/evals/reports/last_run.json`. Editing any prompt closes the gate
+immediately — verified by doing it.
+
+**The last inch is a GitHub setting I could not make.** A workflow can fail a
+check; only branch protection can make it *required*. Until `evaluation-gate` is
+marked required on `master`, it reports and does not block, and the criterion is
+half enforced. The exact `gh api` command is in
+[plans/phase-6.md](../plans/phase-6.md). `gh` is not installed here.
+
+Next: Phase 7, red teaming. Note `packages/evals/red_team/` is still .gitkeep-only
+and docs/SPEC.md §9 already lists the attack categories; Promptfoo does red-team
+generation, and it is already configured (though not as a dependency).
 
 Phase 0 tasks, for reference: task 1 `1de4a59`, 2 `1a603eb`, 3 `0c56b7f`,
 4 `2b0e933`, 5 `06b9736`, 6 `6132a66`, 7 `600d919`, 8 `e7bed57`, 9 `872bcb5`.
@@ -110,6 +133,14 @@ One open item, and one resolved note worth keeping:
   `packages/ai_core`, rather than inventing an agent mid-phase. Worth deciding
   before Phase 7 (red teaming), which is the next phase that would want a
   dedicated safety owner.
+
+- **There is still no FAST CI lane.** `.github/` now exists, but it holds only
+  `evaluation-gate.yml`. docs/CODE_QUALITY.md's FAST lane (lint, types, tests,
+  `alembic check`, stale-types, gitleaks) was moved to Phase 1 and never built,
+  so lint and tests run only in git hooks — nothing checks a push that used
+  `--no-verify`, and nothing checks the repo on GitHub at all. Two phases
+  overdue. Deliberately not folded into Phase 6, which would have blurred what
+  this phase delivered.
 
 - **Trace volume is unbounded and unpruned.** Phoenix keeps every span on its
   volume forever. Harmless now; worth a retention policy before this runs for

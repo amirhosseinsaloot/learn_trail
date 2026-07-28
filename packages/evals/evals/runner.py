@@ -173,27 +173,45 @@ async def run_suite(suite: SuiteName) -> list[MetricResult]:
     return await _run_generation_suite(suite)
 
 
-async def _run_generation_suite(suite: SuiteName) -> list[MetricResult]:
-    """Answer each case and grade the answer.
+async def _produce(suite: SuiteName, case: EvaluationCase) -> str:
+    """Run the real pipeline for one case and return what it produced.
 
-    Answers are generated through the gateway rather than the chat graph: the
-    graph adds persistence, checkpointing and the safety pipeline, none of which
-    the answer's *quality* depends on, and all of which would make a run need a
-    database. What is being measured here is the model and the prompt.
+    The two suites measure different things and so must call different code.
+    `conversations` measures the answer path; `summaries` measures the summariser,
+    with its own prompt version and its own alias. Grading a summary case by
+    asking the chat model to answer the last turn would score the wrong component
+    entirely — and would have quietly reported the summariser as healthy while it
+    was never invoked.
+
+    Answers go through the gateway rather than the chat graph: the graph adds
+    persistence, checkpointing and the safety pipeline, none of which the
+    answer's *quality* depends on, all of which would make a run need Postgres.
     """
+    if suite == "summaries":
+        from ai_core.agents.summariser import summarise
+
+        transcript = "\n".join(f"{turn.role}: {turn.content}" for turn in case.messages)
+        return (await summarise(transcript)).summary.model_dump_json()
+
     from ai_core.models.aliases import ModelAlias
     from ai_core.models.gateway import complete
     from ai_core.schemas.completion import ChatTurn, CompletionRequest
 
+    answer = await complete(
+        CompletionRequest(
+            alias=ModelAlias.LEARNING_FAST,
+            messages=[ChatTurn(role=turn.role, content=turn.content) for turn in case.messages],
+        )
+    )
+    return answer.text
+
+
+async def _run_generation_suite(suite: SuiteName) -> list[MetricResult]:
+    """Produce output for each case and grade it."""
     results: list[MetricResult] = []
     for case in load_suite(suite):
-        answer = await complete(
-            CompletionRequest(
-                alias=ModelAlias.LEARNING_FAST,
-                messages=[ChatTurn(role=turn.role, content=turn.content) for turn in case.messages],
-            )
-        )
-        claims = check_forbidden_claims(case, answer.text)
+        output = await _produce(suite, case)
+        claims = check_forbidden_claims(case, output)
         results.append(
             MetricResult(
                 case_id=claims.case_id,
@@ -204,34 +222,68 @@ async def _run_generation_suite(suite: SuiteName) -> list[MetricResult]:
                 explanation=claims.explanation,
             )
         )
-        results.extend(await _judge(suite, case, answer.text))
+        results.extend(await _judge(suite, case, output))
     return results
 
 
 async def _judge(suite: SuiteName, case: EvaluationCase, output: str) -> list[MetricResult]:
-    """Score with DeepEval's metrics, through the gateway judge.
+    """Score against the case's own rubric, with the judge model.
+
+    **GEval over the case's `grading_notes`, not a stock relevance metric.** The
+    first version of this used `AnswerRelevancyMetric`, and the first real run
+    showed why that was wrong twice over:
+
+    - `conv-004` asks for the release date of a PostgreSQL version that does not
+      exist, and the *correct* answer is a refusal. Relevance scored it 0.43 for
+      "not providing a direct answer" — penalising the system for doing exactly
+      what the case was written to require.
+    - For summaries the metric was handed `case.question`, which is the last user
+      turn. On `sum-003` that turn is the deliberate pizza derail, so a faithful
+      summary of a B-tree conversation scored 0.00 for failing to discuss pizza.
+
+    Both are the same mistake: judging against a generic notion of relevance
+    rather than against what the case says a good answer is. The rubric is
+    already curated in the dataset; using it is both more correct and the reason
+    `grading_notes` exists.
 
     Imported here rather than at module scope: DeepEval is the optional `judges`
     extra, and everything above this line has to work without it so the gate and
     the datasets stay installable in a bare checkout.
     """
-    from deepeval.metrics import AnswerRelevancyMetric
-    from deepeval.test_case import LLMTestCase
+    from deepeval.metrics import GEval
+    from deepeval.test_case import LLMTestCase, LLMTestCaseParams
 
     from evals.judge import gateway_judge
 
     metric_name = "summary_faithfulness" if suite == "summaries" else "answer_relevance"
-    metric = AnswerRelevancyMetric(
-        threshold=THRESHOLDS[metric_name],
+
+    # For a summary the input is the *transcript*, not the last turn — the
+    # summary is about the whole conversation, and judging it against one turn
+    # is what produced the pizza result above.
+    subject = (
+        "\n".join(f"{turn.role}: {turn.content}" for turn in case.messages)
+        if suite == "summaries"
+        else case.question
+    )
+
+    metric = GEval(
+        name=metric_name,
         model=gateway_judge(),
-        # The reason is not optional: docs/SPEC.md §9 says AI judges are not
-        # sufficient, so every score has to arrive with an argument a human can
-        # review. A bare number can only be trusted blindly or ignored.
-        include_reason=True,
+        threshold=THRESHOLDS[metric_name],
+        evaluation_params=[LLMTestCaseParams.INPUT, LLMTestCaseParams.ACTUAL_OUTPUT],
+        evaluation_steps=[
+            *case.grading_notes,
+            # The counterweight, and **only for summaries**. A summary may contain
+            # nothing the transcript did not, so "unsupported by the input" is
+            # precisely the failure. An *answer* is supposed to bring knowledge
+            # the question did not contain — that is what asking a question is
+            # for — and applying the same step there scored a correct explanation
+            # of N+1 at 0.60 for "elaborating beyond the input".
+            *(["Penalise any claim not supported by the input."] if suite == "summaries" else []),
+        ],
         async_mode=True,
     )
-    test_case = LLMTestCase(input=case.question, actual_output=output)
-    await metric.a_measure(test_case)
+    await metric.a_measure(LLMTestCase(input=subject, actual_output=output))
     return [
         MetricResult(
             case_id=case.id,
@@ -239,15 +291,38 @@ async def _judge(suite: SuiteName, case: EvaluationCase, output: str) -> list[Me
             metric=metric_name,
             passed=bool(metric.success),
             score=float(metric.score or 0.0),
+            # docs/SPEC.md §9 says AI judges are not sufficient, so every score
+            # arrives with an argument a human can review. A bare number can only
+            # be trusted blindly or ignored.
             explanation=str(metric.reason or ""),
         )
     ]
 
 
+def _check_preconditions(suites: Sequence[SuiteName]) -> None:
+    """Fail before spending, not after.
+
+    The generation suites judge their output with DeepEval, which is the optional
+    `judges` extra. Discovering it is missing *after* summarising four
+    conversations means the run has already been paid for and produced nothing —
+    which is exactly what the first invocation of `make evals` did.
+    """
+    import importlib.util
+
+    needs_judge = [suite for suite in suites if suite != "safety"]
+    if needs_judge and importlib.util.find_spec("deepeval") is None:
+        raise InconclusiveRun(
+            f"suites {needs_judge} need the `judges` extra, which is not installed. "
+            "Run `uv sync --all-groups --extra judges`, or `make evals`, which does it."
+        )
+
+
 async def run(suites: Sequence[SuiteName] | None = None) -> RunReport:
     """Run the requested suites and collect every result."""
+    chosen = list(suites or SUITES)
+    _check_preconditions(chosen)
     report = RunReport()
-    for suite in suites or SUITES:
+    for suite in chosen:
         report.results.extend(await run_suite(suite))
     return report
 

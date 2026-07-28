@@ -1,0 +1,27 @@
+{
+  "fingerprint": "0565757d713db557396c2108148a1e8e3f2cefcde8e79b1d02cb23185b565886",
+  "passed": true,
+  "recorded_at": "2026-07-28T18:14:08+00:00",
+  "summary": {
+    "by_metric": {
+      "answer_relevance": {
+        "failed": 0,
+        "passed": 6
+      },
+      "forbidden_claims": {
+        "failed": 0,
+        "passed": 10
+      },
+      "safety_policy_compliance": {
+        "failed": 0,
+        "passed": 6
+      },
+      "summary_faithfulness": {
+        "failed": 0,
+        "passed": 4
+      }
+    },
+    "failed": 0,
+    "total": 26
+  }
+}
