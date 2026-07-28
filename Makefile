@@ -112,6 +112,45 @@ type-web: ## TypeScript: `next typegen && tsc --noEmit` (bare tsc fails on a cle
 test: ## Unit tests, excluding phase exit-criterion tests (`pytest -m "not slow and not phase"`)
 	$(PY) -m pytest -m "not slow and not phase"
 
+# --------------------------------------------------------------------------
+# SLOW lane (Phase 6, docs/CODE_QUALITY.md "CI lane design").
+#
+# These call real models and cost real money. They are NOT in `fast`, NOT in a
+# git hook, and NOT in `make status` — a paid, nondeterministic check on a path
+# a developer walks fifty times a day is one they learn to bypass.
+#
+# Two environment problems this recipe exists to solve, both found by running the
+# suite the naive way:
+#
+# 1. LITELLM_BASE_URL defaults to `http://litellm:4000` — the compose service
+#    name, which resolves inside the network and not on the host. Without the
+#    override the safety rails fail *open* (Phase 4's deliberate choice) and every
+#    blocking case reports as a safety regression rather than as an unreachable
+#    gateway. `InconclusiveRun` now catches that loudly rather than scoring it.
+#
+# 2. LITELLM_MASTER_KEY lives in the gitignored `.env`, which the compose
+#    services read and a host shell does not. Without it the proxy rejects the
+#    call with `[400] No connected db` — it treats the fallback placeholder as a
+#    virtual key and goes looking for a database to validate it against.
+#
+# `.env` is sourced rather than duplicated, so there is still exactly one place
+# the key lives (CLAUDE.md invariant #3). `-` on the include: a clean clone with
+# no .env still parses this file and fails at the call, which is the correct
+# blast radius.
+# --------------------------------------------------------------------------
+.PHONY: evals evals-gate evals-sync
+
+evals: ## Run the evaluation suite against real models and record the gate manifest
+	uv sync --all-groups --extra judges
+	set -a; [ -f .env ] && . ./.env; set +a; \
+		LITELLM_BASE_URL=$${LITELLM_BASE_URL:-http://localhost:4000} $(PY) -m evals run
+
+evals-gate: ## Free, offline: is the current prompt/model config covered by a recorded run?
+	$(PY) -m evals gate
+
+evals-sync: ## Register the golden dataset cases in the database
+	$(PY) -m evals sync
+
 # Prerequisite list, not a recipe: make runs them in order and stops at the
 # first failure. Cheapest and most frequently-broken checks first.
 fast: lint-py type-py test lint-web type-web ## Every Phase 0 check, in one command

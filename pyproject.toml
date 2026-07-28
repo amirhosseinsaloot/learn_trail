@@ -133,6 +133,21 @@ exclude = [
 module = ["guardrails.*", "nemoguardrails.*"]
 ignore_missing_imports = true
 
+# DeepEval (Phase 6) ships no stubs, and unlike the two above it is an *optional*
+# extra — a checkout that never installed the `judges` group would otherwise fail
+# type-checking on an import it deliberately does not have. `make evals` installs
+# it; `make type-py` must pass without it.
+[[tool.mypy.overrides]]
+module = ["deepeval.*"]
+ignore_missing_imports = true
+
+# `GatewayJudge` subclasses `DeepEvalBaseLLM`, which is `Any` to mypy for the
+# reason above. Scoped to the one module that does it, so nothing else silently
+# loses subclass checking.
+[[tool.mypy.overrides]]
+module = ["evals.judge"]
+disallow_subclassing_any = false
+
 [[tool.mypy.overrides]]
 module = ["ai_core.safety.summary_validators"]
 disallow_subclassing_any = false

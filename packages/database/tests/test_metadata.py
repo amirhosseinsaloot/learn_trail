@@ -32,6 +32,8 @@ EXPECTED_TABLES = frozenset(
         "learning_revision",
         "safety_event",
         "model_run",
+        "evaluation_case",
+        "evaluation_result",
     }
 )
 

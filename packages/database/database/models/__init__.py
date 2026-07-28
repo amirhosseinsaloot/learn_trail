@@ -8,8 +8,8 @@ why Alembic's env.py imports it explicitly (see migrations/env.py).
 Two aggregates so far: the conversation (`chat`, `message`, Phase 1) and
 knowledge (`summary_draft`, `learning`, `learning_revision`, Phase 3). The
 remaining docs/SPEC.md §17 tables arrive with the phase that introduces their
-concept: `safety_event` in Phase 4, `model_run` in Phase 5, `evaluation_*` in
-Phase 6, `prompt_version` alongside the prompt lifecycle.
+concept: `safety_event` in Phase 4, `model_run` and `evaluation_*` in Phases 5
+and 6, `prompt_version` alongside the prompt lifecycle.
 
 `model_run` lives in the knowledge module rather than a third one for want of a
 better home: it belongs to neither aggregate and is referenced by both.
@@ -21,6 +21,8 @@ from database.models.conversation import Chat, ChatStatus, Message, MessageRole
 from database.models.knowledge import (
     ChangeSource,
     DraftStatus,
+    EvaluationCase,
+    EvaluationResult,
     Learning,
     LearningRevision,
     ModelRun,
@@ -33,6 +35,8 @@ __all__ = [
     "Chat",
     "ChatStatus",
     "DraftStatus",
+    "EvaluationCase",
+    "EvaluationResult",
     "Learning",
     "LearningRevision",
     "Message",

@@ -30,8 +30,10 @@ from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -360,4 +362,105 @@ class ModelRun(Base):
         CheckConstraint("latency_ms >= 0", name="latency_non_negative"),
         # The cost query is "what did the last week cost, worst first".
         Index("ix_model_run_recent", "created_at", "operation"),
+    )
+
+
+class EvaluationCase(Base):
+    """A golden case, registered in the database (docs/SPEC.md §17, Phase 6).
+
+    **The files under `packages/evals/datasets/` are the source of truth, not
+    this table.** A case is reviewed in a pull request, versioned in git and
+    diffable — none of which a row is. What the table adds is a stable identity
+    to hang results off: `evaluation_result` needs something to point at, and
+    pointing at a filename would break the first time a case is renamed.
+
+    So this is a registry, synced from the files, and `case_id` is the join key
+    rather than the primary key's meaning. A case that disappears from disk keeps
+    its row, because the results that reference it are still history.
+    """
+
+    __tablename__ = "evaluation_case"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+
+    #: The id from the file, e.g. `conv-001-index-vs-primary-key`. Unique: two
+    #: cases sharing one would make every result about them ambiguous.
+    case_id: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+
+    #: `conversations`, `summaries`, `safety`.
+    suite: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    #: The case as it was when synced, so a result can be read against the rubric
+    #: that produced it rather than against whatever the file says today.
+    content: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.clock_timestamp(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        CheckConstraint("suite IN ('conversations', 'summaries', 'safety')", name="suite_is_known"),
+        CheckConstraint("length(trim(case_id)) > 0", name="case_id_not_blank"),
+    )
+
+
+class EvaluationResult(Base):
+    """One metric's verdict on one model call (docs/SPEC.md §17, Phase 6).
+
+    Attached to a `model_run`, which is what makes a score explicable: the run
+    carries the trace, the alias, the provider model and the cost, so a score
+    that dropped can be read against what actually changed. A result table with
+    no link to the run would record *that* quality fell and nothing about why.
+
+    `score` is nullable and `passed` is not. Some metrics are judgements without
+    a number — "was this blocked, as the case required" is a yes or a no — and
+    inventing a 1.0 for them would make an average across metrics meaningless.
+    """
+
+    __tablename__ = "evaluation_result"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+
+    #: `SET NULL`, not `CASCADE`: a score outlives the cost record it explains,
+    #: and deleting old runs must not silently rewrite quality history.
+    model_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("model_run.id", ondelete="SET NULL")
+    )
+
+    #: Which case produced it, when the result came from the golden set. NULL for
+    #: a metric scored against live production output.
+    evaluation_case_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("evaluation_case.id", ondelete="SET NULL")
+    )
+
+    #: e.g. `answer_relevance`, `summary_faithfulness`, `safety_policy_compliance`.
+    evaluation_name: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    #: The metric's own version. A threshold that moved, or a judge prompt that
+    #: changed, makes today's 0.8 incomparable with last month's — and without
+    #: this column the history would look like a regression that never happened.
+    evaluation_version: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    #: 0.0-1.0 where the metric produces one. NULL for pass/fail judgements.
+    score: Mapped[float | None] = mapped_column(Float)
+    passed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+    #: The judge's reasoning. The most useful column in the table when something
+    #: fails, and the reason DeepEval's metrics are configured to produce one.
+    explanation: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint("score IS NULL OR (score >= 0 AND score <= 1)", name="score_in_range"),
+        # The regression query is "how has this metric moved over time".
+        Index("ix_evaluation_result_metric_recent", "evaluation_name", "created_at"),
     )
