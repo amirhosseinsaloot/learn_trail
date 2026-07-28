@@ -199,3 +199,71 @@ class LearningEdit(BaseModel):
     content: SummaryContent
     #: Optional note about what changed. Free text — categories would be guessing.
     note: str | None = Field(default=None, max_length=500)
+
+
+# --- retrieval (Phase 8) --------------------------------------------------------
+
+
+class Citation(BaseModel):
+    """One approved Learning that supplied context, and the passage it supplied.
+
+    **This type is Phase 8's exit criterion.** The criterion asks that an answer
+    identify *exactly* which approved Learning supplied its context, and a
+    citation built from the retrieval record does that by construction: the
+    `learning_id` is the row the chunk came from, not a number the model wrote in
+    its prose and might have invented or omitted.
+
+    `excerpt` is the chunk text verbatim, so a reader can check the answer against
+    what the model was actually given rather than against the Learning as it
+    stands today — those differ the moment the Learning is edited.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    learning_id: uuid.UUID
+    learning_title: str
+    chunk_index: int
+    excerpt: str
+    #: Fused rank score. Ordering within one response; meaningless across two.
+    score: float
+    #: `semantic`, `lexical`, or `both` — which half of the hybrid search found it.
+    matched_by: str
+
+
+class SearchResult(BaseModel):
+    """What a plain search returns: passages, no generated answer."""
+
+    query: str
+    citations: list[Citation]
+
+
+class AskRequest(BaseModel):
+    """A question to answer from the approved library."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    question: MessageContent
+    #: How many chunks to retrieve. Bounded: more context is not free, and past a
+    #: handful of passages the model starts averaging over them rather than using
+    #: the best one.
+    limit: int = Field(default=5, ge=1, le=20)
+
+
+class AskResponse(BaseModel):
+    """An answer grounded in approved Learnings, with its sources.
+
+    `citations` is never inferred from the answer text. It is the list of chunks
+    that were placed in the context, which is what "supplied the context" means —
+    a Learning the model was given and chose not to lean on still supplied
+    context, and pretending otherwise would require asking the model to introspect
+    on its own reasoning.
+    """
+
+    question: str
+    answer: str
+    citations: list[Citation]
+    #: True when nothing was retrieved. The answer then says so rather than being
+    #: generated from the model's own knowledge — an ungrounded answer that looks
+    #: like a grounded one is the failure this whole phase guards against.
+    grounded: bool
+    trace_id: str | None = None

@@ -44,8 +44,20 @@ COPY pyproject.toml uv.lock README.md ./
 COPY apps/api/pyproject.toml apps/api/pyproject.toml
 COPY packages/ai_core/pyproject.toml packages/ai_core/pyproject.toml
 COPY packages/database/pyproject.toml packages/database/pyproject.toml
+# `--package learntrail-api`, not a bare sync. The root project depends on every
+# workspace member including `learntrail-evals` (Phase 6), and a bare sync
+# therefore demands that member's source be present — it failed with
+# "Distribution not found at: file:///app/packages/evals" the first time this
+# image was rebuilt after Phase 6, three phases late, because nothing had needed
+# a rebuild in between.
+#
+# Resolving from the API member instead is the right fix rather than a
+# workaround: the runtime image has no business carrying the evaluation suite.
+# It is developer tooling that pulls DeepEval and a test framework, and shipping
+# it would put a judge model's dependencies in the container that serves
+# requests.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-workspace
+    uv sync --frozen --no-dev --no-install-workspace --package learntrail-api
 
 # --- Layer 2: workspace source. --------------------------------------------
 # PACKAGING TRAP (plans/phase-0.md, task 8): packages/database's wheel ships
@@ -69,7 +81,7 @@ COPY packages/database/ packages/database/
 # lands at /app/prompts and not somewhere package-relative.
 COPY prompts/ prompts/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+    uv sync --frozen --no-dev --package learntrail-api
 
 # Run as a non-root user whose uid matches the repo owner, so files created in
 # the bind-mounted source tree (and any alembic revision generated from inside

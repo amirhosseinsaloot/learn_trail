@@ -34,6 +34,11 @@ PERSIST_MESSAGE: Final = "persist_message"
 #: Summary generation is the system's other model call, and gets its own root.
 SUMMARY_REQUEST: Final = "summary.request"
 
+#: Retrieval over approved Learnings (Phase 8). Its own span because it is two
+#: database queries plus an embedding call, and "why was that answer poorly
+#: sourced" is answered by looking at what came back from it.
+RETRIEVE: Final = "retrieve_learnings"
+
 #: Graph node name -> span name. Nodes absent from this map emit no span of
 #: their own: `validate_input` and `choose_model` are pure, sub-millisecond and
 #: allocate nothing, so a span for each would triple the trace's size to say

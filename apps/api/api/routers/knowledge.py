@@ -34,11 +34,21 @@ from ai_core.graphs.summary import (
     SummaryError,
     SummaryRejected,
 )
+from ai_core.models.aliases import ModelAlias
+from ai_core.models.gateway import answer
+from ai_core.retrieval import Retrieved, embed_query, search
+from ai_core.retrieval.indexer import index_all
+from ai_core.telemetry import Attr, current_trace_id, span
+from ai_core.telemetry.spans import RETRIEVE as RETRIEVE_SPAN
 from api.graph import summary_graph
 from api.schemas import (
+    AskRequest,
+    AskResponse,
+    Citation,
     LearningDetail,
     LearningEdit,
     LearningRead,
+    SearchResult,
     SummaryContent,
     SummaryDraftRead,
 )
@@ -374,3 +384,110 @@ def _require_pending(draft: SummaryDraft) -> None:
             status.HTTP_409_CONFLICT,
             f"draft {draft.id} was already {draft.status.value}",
         )
+
+
+# --- retrieval over approved Learnings (Phase 8) --------------------------------
+
+
+def _as_citation(hit: Retrieved) -> Citation:
+    """Turn a retrieval hit into the wire shape.
+
+    One function, so every endpoint that cites something builds the citation the
+    same way. Two call sites constructing this by hand is two chances for one of
+    them to omit the `learning_id` and leave a citation nobody can follow.
+    """
+    return Citation(
+        learning_id=hit.learning_id,
+        learning_title=hit.learning_title,
+        chunk_index=hit.chunk_index,
+        excerpt=hit.content,
+        score=hit.score,
+        matched_by=hit.matched_by,
+    )
+
+
+@router.post("/learnings/search")
+async def search_learnings(body: AskRequest, db: Session) -> SearchResult:
+    """Hybrid search over approved Learnings. No model call, no generated answer.
+
+    POST rather than GET with a query string: the question is user content of
+    unbounded length, and it belongs in a body rather than in a URL that ends up
+    in logs and browser history. It is also validated by the same schema the ask
+    endpoint uses, which keeps the two from disagreeing about what a question is.
+    """
+    with span(RETRIEVE_SPAN, {Attr.CONTEXT_MESSAGES: body.limit}):
+        vector = await embed_query(body.question)
+        hits = await search(db, body.question, vector.vector, limit=body.limit)
+    return SearchResult(query=body.question, citations=[_as_citation(hit) for hit in hits])
+
+
+@router.post("/learnings/ask")
+async def ask_learnings(body: AskRequest, db: Session) -> AskResponse:
+    """Answer a question from the approved library, citing what supplied the context.
+
+    **The citations come from the retrieval step, not from the answer.** The model
+    is asked to ground its answer in the passages and to say when they do not
+    contain the answer; it is *not* asked to emit citation markers. Markers would
+    be a second, unreliable record of something the system already knows for
+    certain — and one that can be silently wrong in both directions, inventing a
+    source or omitting a real one.
+
+    An empty library returns `grounded: false` and a plain refusal rather than an
+    answer from the model's own knowledge. That is the whole point: this endpoint
+    answers *from your Learnings*, and an ungrounded answer dressed up as a
+    grounded one is exactly the failure Phase 8's criterion exists to prevent.
+    """
+    with span(RETRIEVE_SPAN, {Attr.CONTEXT_MESSAGES: body.limit}):
+        vector = await embed_query(body.question)
+        hits = await search(db, body.question, vector.vector, limit=body.limit)
+
+    citations = [_as_citation(hit) for hit in hits]
+    if not hits:
+        return AskResponse(
+            question=body.question,
+            answer=(
+                "Nothing in your approved Learnings covers that yet. Ask it in a chat, "
+                "and approve the summary if the answer is worth keeping."
+            ),
+            citations=[],
+            grounded=False,
+            trace_id=current_trace_id(),
+        )
+
+    # Numbered so the model can refer to a passage in prose if it wants to. The
+    # numbers are for the reader's benefit; the machine-readable attribution is
+    # the `citations` list, which does not depend on the model using them.
+    passages = "\n\n".join(
+        f"[{index}] From the Learning titled {hit.learning_title!r}:\n{hit.content}"
+        for index, hit in enumerate(hits, start=1)
+    )
+    prompt = (
+        "Answer the question using only the passages below, which come from the "
+        "user's own approved notes.\n\n"
+        "If the passages do not contain the answer, say so plainly — do not fill "
+        "the gap from your own knowledge. Partial answers are fine and useful; "
+        "invented ones are not.\n\n"
+        f"{passages}\n\nQuestion: {body.question}\n\nAnswer:"
+    )
+
+    response = await answer(ModelAlias.LEARNING_FAST, prompt, max_tokens=800)
+    return AskResponse(
+        question=body.question,
+        answer=response.text,
+        citations=citations,
+        grounded=True,
+        trace_id=current_trace_id(),
+    )
+
+
+@router.post("/learnings/reindex")
+async def reindex_learnings(db: Session) -> dict[str, int]:
+    """Rebuild the search index for every live approved Learning.
+
+    Explicit rather than automatic-only. Approval and editing keep the index in
+    step on their own, but a re-index is the correct response to a changed
+    embedding model, a changed chunking rule, or any doubt at all — and it must be
+    possible to run it without a redeploy. Idempotent by construction: indexing
+    replaces a Learning's chunks rather than adding to them.
+    """
+    return await index_all(db)

@@ -36,6 +36,17 @@ CHAT_OPERATIONS = {
     "/summaries/{draft_id}": ["patch"],
     "/summaries/{draft_id}/approve": ["post"],
     "/summaries/{draft_id}/reject": ["post"],
+    # Phase 8: retrieval over the approved library. All three are POST — the
+    # question is user content of unbounded length and belongs in a body, not in
+    # a URL that ends up in logs and browser history.
+    #
+    # Note what is absent: no endpoint retrieves over `summary_draft`. Indexing
+    # drafts would let unapproved model output supply the context for an answer,
+    # which is CLAUDE.md invariant #5 defeated by the back door — and, like the
+    # missing "create a learning" endpoint above, the absence is visible here.
+    "/learnings/search": ["post"],
+    "/learnings/ask": ["post"],
+    "/learnings/reindex": ["post"],
     "/learnings": ["get"],
     "/learnings/{learning_id}": ["delete", "get", "patch"],
     "/learnings/{learning_id}/restore": ["post"],
