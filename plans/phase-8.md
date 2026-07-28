@@ -16,7 +16,7 @@ Exit criterion (verbatim, docs/SPEC.md):
 
 - [x] Chunking + embedding pipeline for approved learnings via LlamaIndex (owner: `ai-orchestration`) — commit: `14ddf42`
 - [x] pgvector migration + hybrid (full-text + semantic) search endpoint (owner: `backend-api`) — commit: `8832d90`, `14ddf42`
-- [x] Retrieval evaluation: precision, recall, faithfulness (owner: `ai-orchestration`) — commit: `PENDING`
+- [x] Retrieval evaluation: precision, recall, faithfulness (owner: `ai-orchestration`) — commit: `62abdf7`
       **Not via Ragas.** docs/SPEC.md §9 names it and that was the intent, but
       ragas 0.4.3 cannot be imported at all: every entry point routes through
       `ragas.llms.base`, which hard-imports
@@ -73,7 +73,7 @@ Retrieval evaluation, against the same library:
   never fails because the gateway was down — the trade is that a Learning can be
   approved and not searchable, visible only in the trace. `POST /learnings/reindex`
   is the recovery, which is why it is not optional.
-- [x] Ask-across-My-Learnings UI with citations to the source learning (owner: `frontend-web`) — commit: `PENDING`
+- [x] Ask-across-My-Learnings UI with citations to the source learning (owner: `frontend-web`) — commit: `62abdf7`
 
 ## Not in this phase
 

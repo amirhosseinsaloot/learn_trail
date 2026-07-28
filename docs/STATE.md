@@ -1,11 +1,30 @@
 # State
 
-Current phase: **Phase 7 is COMPLETE. Phase 8 — Search across approved learnings
-is next** (see [plans/phase-8.md](../plans/phase-8.md)); nothing in Phase 8 has
-been started.
+Current phase: **Phase 8 is COMPLETE. Phase 9 — Prompt optimization is next**
+(see [plans/phase-9.md](../plans/phase-9.md)); nothing in Phase 9 has been
+started.
 
-`make status` reports **Phase 0 through 7 PASS**. Phases 8–12 are red, as
-designed.
+`make status` reports **Phase 0–5, 7 and 8 PASS**. Phases 9–12 are red as
+designed — and **Phase 6 is red for a real reason**, described below.
+
+## Phase 6 is red, and it should be
+
+The evaluation suite fails two conversation cases, reproducibly:
+
+    conv-002-follows-a-correction      3 runs: 0.40, 0.50, pass
+    conv-005-respects-requested-depth  3 runs: 0.60, 0.40, 0.60
+
+Both have the same root cause, and it is a genuine product gap rather than a
+flaky metric: **the chat path sends the transcript with no system prompt at all.**
+`generate_answer` builds `CompletionRequest(alias=..., messages=context)` and
+nothing else, so nothing instructs the model to accept a correction or to respect
+"in one sentence only".
+
+The evaluation gate is therefore doing exactly its job — refusing to certify a
+configuration whose answers do not meet the bar. Fixing it is a *prompt* change,
+which is Phase 9's subject, and doing it inside Phase 8 would have been widening
+scope to make a gate go green. It is the highest-value thing Phase 9 can start
+with.
 
 All six Phase 1 tasks: `chat`+`message` tables and the async session `421feb8`,
 the LiteLLM gateway and its three aliases `e9a9118`, the chat endpoints
@@ -165,6 +184,15 @@ One open item, and one resolved note worth keeping:
   `--no-verify`, and nothing checks the repo on GitHub at all. Two phases
   overdue. Deliberately not folded into Phase 6, which would have blurred what
   this phase delivered.
+
+- **The v2 safety rails caused a Phase 2 regression, now fixed by v3.** v2 blocked
+  "Reply with one short word." — a formatting instruction, not an attack — because
+  it described the attack by its *shape* ("asking to repeat, summarise, translate,
+  encode or continue"). v3 pins it to the object: what is asked for must be the
+  assistant's own instructions. Worth remembering that Phase 7's measurement
+  reported FRR 0% for v2 and was not wrong, only under-powered: all six controls
+  were substantial questions, so nothing in the set had that shape.
+  `rt-ctrl-007` closes it.
 
 - **Trace volume is unbounded and unpruned.** Phoenix keeps every span on its
   volume forever. Harmless now; worth a retention policy before this runs for
