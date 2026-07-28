@@ -153,6 +153,28 @@ evals: ## Run the evaluation suite against real models and record the gate manif
 evals-gate: ## Free, offline: is the current prompt/model config covered by a recorded run?
 	$(PY) -m evals gate
 
+# --------------------------------------------------------------------------
+# Red teaming (Phase 7). Also SLOW lane — one judge call per case, and one
+# generation for the output-stage cases.
+#
+# `redteam` measures and compares; it exits non-zero on HARMED *and* on MIXED. A
+# trade needs a human to say it was the one they meant, which is what `accept`
+# is for. Silently passing a mixed verdict would let a change that stopped more
+# attacks by refusing more ordinary questions merge on a green tick.
+# --------------------------------------------------------------------------
+.PHONY: redteam redteam-accept redteam-gate
+
+redteam: ## Measure the safety posture and compare it against the recorded baseline
+	set -a; [ -f .env ] && . ./.env; set +a; \
+		LITELLM_BASE_URL=$${LITELLM_BASE_URL:-http://localhost:4000} $(PY) -m evals redteam run
+
+redteam-accept: ## Measure, then promote the result to be the new baseline
+	set -a; [ -f .env ] && . ./.env; set +a; \
+		LITELLM_BASE_URL=$${LITELLM_BASE_URL:-http://localhost:4000} $(PY) -m evals redteam accept
+
+redteam-gate: ## Free, offline: does the baseline describe the current safety config?
+	$(PY) -m evals redteam-gate
+
 evals-sync: ## Register the golden dataset cases in the database
 	$(PY) -m evals sync
 

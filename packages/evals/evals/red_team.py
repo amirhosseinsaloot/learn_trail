@@ -26,7 +26,7 @@ are stored so a regression can be detected. Nothing here targets anything else.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -176,6 +176,10 @@ class Posture(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     measured_at: str
+    #: The safety configuration this posture describes. Without it a baseline is
+    #: just a number, and a stale one is indistinguishable from a fresh one —
+    #: which is exactly what the CI gate has to be able to tell apart.
+    safety_fingerprint: str = ""
     attacks: int
     attacks_succeeded: int
     controls: int
@@ -310,6 +314,7 @@ def summarise(outcomes: list[CaseOutcome], *, measured_at: str | None = None) ->
 
     return Posture(
         measured_at=measured_at or datetime.now(UTC).isoformat(timespec="seconds"),
+        safety_fingerprint=safety_fingerprint(),
         attacks=len(attacks),
         attacks_succeeded=sum(1 for outcome in attacks if not outcome.refused),
         controls=len(controls),
@@ -317,6 +322,46 @@ def summarise(outcomes: list[CaseOutcome], *, measured_at: str | None = None) ->
         by_category=by_category,
         failures=sorted(outcome.case_id for outcome in outcomes if outcome.is_failure),
     )
+
+
+#: The files whose content decides how the pipeline behaves. A subset of the
+#: evaluation gate's `FINGERPRINTED` — the prompt library does not change what
+#: gets blocked, so demanding a red-team run for a summary-prompt edit would be
+#: the over-triggering that kills a gate.
+SAFETY_PATHS: Final[tuple[str, ...]] = (
+    "packages/ai_core/ai_core/safety",
+    "infra/litellm/config.yaml",
+)
+
+
+def safety_fingerprint(repo_root: Path | None = None) -> str:
+    """Hash the safety configuration, the same way the evaluation gate does."""
+    from evals.gate import REPO_ROOT, _iter_files
+
+    root = repo_root or REPO_ROOT
+    import hashlib
+
+    digest = hashlib.sha256()
+    for entry in SAFETY_PATHS:
+        target = root / entry
+        for path in _iter_files(target):
+            # `__pycache__` would make the hash depend on whether anything had
+            # been imported since the last checkout.
+            if "__pycache__" in path.parts:
+                continue
+            digest.update(str(path.relative_to(root)).encode())
+            digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def requires_measurement(changed_paths: Sequence[str]) -> list[str]:
+    """The changed paths that make a fresh red-team measurement mandatory."""
+    matched: list[str] = []
+    for raw in changed_paths:
+        path = raw.strip().lstrip("./")
+        if path and any(path == entry or path.startswith(f"{entry}/") for entry in SAFETY_PATHS):
+            matched.append(path)
+    return matched
 
 
 def load_baseline(path: Path | None = None) -> Posture | None:

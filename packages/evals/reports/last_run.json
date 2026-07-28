@@ -1,16 +1,16 @@
 {
-  "fingerprint": "0565757d713db557396c2108148a1e8e3f2cefcde8e79b1d02cb23185b565886",
+  "fingerprint": "7e49d181574bd780f6e9b969eac4193dc6edf3103ac6ed1e47fc98226e0ade7d",
   "passed": true,
-  "recorded_at": "2026-07-28T18:14:08+00:00",
+  "recorded_at": "2026-07-28T20:44:50+00:00",
   "summary": {
     "by_metric": {
       "answer_relevance": {
         "failed": 0,
-        "passed": 6
+        "passed": 7
       },
       "forbidden_claims": {
         "failed": 0,
-        "passed": 10
+        "passed": 11
       },
       "safety_policy_compliance": {
         "failed": 0,
@@ -22,6 +22,6 @@
       }
     },
     "failed": 0,
-    "total": 26
+    "total": 28
   }
 }

@@ -90,14 +90,6 @@ def _redteam(args: argparse.Namespace) -> int:
     from evals.red_team import compare, load_baseline, measure, save_baseline
 
     baseline = load_baseline()
-
-    if args.action == "accept":
-        if baseline is None:
-            print("no measurement to accept — run `python -m evals redteam run` first")
-            return 1
-        print(f"baseline already recorded at {baseline.measured_at}")
-        return 0
-
     posture = asyncio.run(measure())
     print(
         f"attacks {posture.attacks_succeeded}/{posture.attacks} succeeded "
@@ -133,6 +125,45 @@ def _redteam(args: argparse.Namespace) -> int:
     return 0 if result.verdict in ("improved", "unchanged") else 1
 
 
+def _redteam_gate(args: argparse.Namespace) -> int:
+    """Free, offline: does the recorded baseline describe the current safety config?
+
+    The CI half of Phase 7. It never measures — measuring costs a model call per
+    case and CI holds no provider credential — it checks that whoever changed the
+    safety configuration also measured it and accepted the result.
+    """
+    from evals.red_team import load_baseline, requires_measurement, safety_fingerprint
+
+    changed = [line for line in (args.changed or "").splitlines() if line.strip()]
+    if changed and not requires_measurement(changed):
+        print("no safety files changed — a red-team measurement is not required")
+        return 0
+    if changed:
+        print(f"safety files changed: {', '.join(requires_measurement(changed))}")
+
+    baseline = load_baseline()
+    if baseline is None:
+        print("no red-team baseline has ever been recorded", file=sys.stderr)
+        return 1
+
+    current = safety_fingerprint()
+    if baseline.safety_fingerprint == current:
+        print(
+            f"safety baseline is current — ASR {baseline.attack_success_rate:.0%}, "
+            f"FRR {baseline.false_refusal_rate:.0%}, measured {baseline.measured_at}"
+        )
+        return 0
+
+    print(
+        "the safety configuration has changed since the baseline was measured "
+        f"({baseline.measured_at}). Run `make redteam`.",
+        file=sys.stderr,
+    )
+    print(f"  safety config now: {current[:16]}", file=sys.stderr)
+    print(f"  baseline measured: {(baseline.safety_fingerprint or 'never')[:16]}", file=sys.stderr)
+    return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="evals", description=__doc__)
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -162,6 +193,12 @@ def main(argv: list[str] | None = None) -> int:
         help="`run` compares against the baseline; `accept` promotes this run to be it",
     )
     redteam.set_defaults(handler=_redteam)
+
+    redteam_gate = subcommands.add_parser(
+        "redteam-gate", help="check the recorded baseline covers the current safety config"
+    )
+    redteam_gate.add_argument("--changed", help="newline-separated changed paths")
+    redteam_gate.set_defaults(handler=_redteam_gate)
 
     args = parser.parse_args(argv)
     # `required=True` on the subparsers guarantees a handler is set, so this is a

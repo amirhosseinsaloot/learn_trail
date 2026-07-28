@@ -27,3 +27,23 @@ docs/SPEC.md §9 lists prompt A/B, small versus large model, cloud versus local
 (Phase 11), guardrails on versus off, and context-window strategies. The two
 providers configured today cover the model-size axis. A prompt A/B needs two
 prompt versions to exist — v2 of `learning_summary` will be the first.
+
+## Red-team generation
+
+`redteam.yaml` generates attacks rather than replaying them.
+
+```bash
+set -a && . ./.env && set +a
+npx promptfoo@latest redteam run -c packages/evals/promptfoo/redteam.yaml
+npx promptfoo@latest redteam report
+```
+
+It is **not** the gate, and the distinction is the important part. `make redteam`
+measures a fixed, curated set, because a gate needs a stable denominator — two
+runs are only comparable if they asked the same questions. A generator asks new
+ones each time, which is exactly what makes it useful for discovery and useless
+for regression.
+
+The loop: generate here, triage by hand, and promote anything that lands into
+`../red_team/cases/`. At that point it joins the measured posture and can never
+quietly return.

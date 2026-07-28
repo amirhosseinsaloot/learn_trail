@@ -88,3 +88,57 @@ jobs:
           echo "::error::A prompt or model file changed and no passing evaluation run"
           echo "::error::covers the current configuration. Run 'make evals' locally and"
           echo "::error::commit packages/evals/reports/last_run.json."
+
+  # --------------------------------------------------------------------------
+  # Phase 7's safety gate. A separate job, so branch protection can require the
+  # two independently: "were the evaluations run" and "did the safety posture
+  # regress" are different questions and a change can fail one while passing the
+  # other.
+  #
+  # Like the gate above, it calls no model. It compares the *recorded* baseline
+  # against the *recorded* posture — the developer measures with `make redteam`,
+  # which is where the money is spent. What CI enforces is that a change touching
+  # the safety configuration arrives with a fresh, accepted measurement rather
+  # than the one from three changes ago.
+  # --------------------------------------------------------------------------
+  red-team:
+    name: red team
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install
+        run: uv sync --all-groups
+
+      - name: Which files changed
+        id: changed
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+          else
+            base="${{ github.event.before }}"
+            head="${{ github.sha }}"
+          fi
+          {
+            echo "files<<EOF"
+            git diff --name-only "$base" "$head" 2>/dev/null || true
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check the safety baseline
+        run: |
+          uv run python -m evals redteam-gate --changed "${{ steps.changed.outputs.files }}"
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::error::A safety file changed without a fresh red-team measurement."
+          echo "::error::Run 'make redteam' to see whether it improved or harmed the"
+          echo "::error::system, then 'make redteam-accept' to record it."

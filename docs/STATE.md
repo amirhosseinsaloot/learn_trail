@@ -1,10 +1,10 @@
 # State
 
-Current phase: **Phase 6 is COMPLETE. Phase 7 — Red teaming is next**
-(see [plans/phase-7.md](../plans/phase-7.md)); nothing in Phase 7 has been
-started.
+Current phase: **Phase 7 is COMPLETE. Phase 8 — Search across approved learnings
+is next** (see [plans/phase-8.md](../plans/phase-8.md)); nothing in Phase 8 has
+been started.
 
-`make status` reports **Phase 0 through 6 PASS**. Phases 7–12 are red, as
+`make status` reports **Phase 0 through 7 PASS**. Phases 8–12 are red, as
 designed.
 
 All six Phase 1 tasks: `chat`+`message` tables and the async session `421feb8`,
@@ -102,9 +102,33 @@ marked required on `master`, it reports and does not block, and the criterion is
 half enforced. The exact `gh api` command is in
 [plans/phase-6.md](../plans/phase-6.md). `gh` is not installed here.
 
-Next: Phase 7, red teaming. Note `packages/evals/red_team/` is still .gitkeep-only
-and docs/SPEC.md §9 already lists the attack categories; Promptfoo does red-team
-generation, and it is already configured (though not as a dependency).
+Phase 7 added red teaming, and — because the criterion is about *measurement* —
+finished by making a real safety change and measuring it.
+
+19 adversarial cases across injection, jailbreak, system-prompt extraction, PII
+leakage, encoded attacks and multi-turn bypass. Six are controls, and every attack
+category has one: a set of attacks alone is passed perfectly by a system that
+refuses everything.
+
+Every measurement carries **two** rates — attack success and false refusal — and
+`compare()` returns `MIXED`, not `IMPROVED`, when a change buys one with the
+other. That verdict is the phase's whole point.
+
+The first baseline: **ASR 23% (3/13), FRR 0%**, with both system-prompt-extraction
+attacks getting through. Neither used adversarial vocabulary, so v1's rail — which
+named the *phrasing* an attack takes — did not match. `rails/v2.yml` describes the
+effect instead. Re-measured:
+
+    ASR 23% -> 0%     FRR 0% -> 0%     verdict: IMPROVED
+      system_prompt_extraction   -100%
+      multi_turn_bypass           -50%
+
+That change closed Phase 6's evaluation gate (the rails are fingerprinted), which
+is exactly what it is for; the golden suite was re-run and passes 28/28.
+
+Next: Phase 8, search across approved learnings. It brings pgvector, embeddings
+and LlamaIndex, plus Ragas for retrieval evaluation — and `packages/evals` now has
+somewhere obvious for a `retrieval/` dataset to go.
 
 Phase 0 tasks, for reference: task 1 `1de4a59`, 2 `1a603eb`, 3 `0c56b7f`,
 4 `2b0e933`, 5 `06b9736`, 6 `6132a66`, 7 `600d919`, 8 `e7bed57`, 9 `872bcb5`.
@@ -128,11 +152,11 @@ One open item, and one resolved note worth keeping:
   *created*, so a changed `.env` needs
   `docker compose up -d --force-recreate litellm` — a plain `restart` keeps the
   old environment and the change looks like it did nothing.
-- **The plan's `safety-engineer` agent was never created.** Phase 4's rails and
-  validators were built by `ai-orchestration`, which already owns
-  `packages/ai_core`, rather than inventing an agent mid-phase. Worth deciding
-  before Phase 7 (red teaming), which is the next phase that would want a
-  dedicated safety owner.
+- **Three plans have now named agents that do not exist**: `safety-engineer`
+  (Phase 4), `eval-engineer` (Phase 6) and `red-team` (Phase 7). All that work was
+  done by `ai-orchestration` and `backend-api` instead. Either the plans should
+  stop naming them or the agents should be created; flagged three times without a
+  decision.
 
 - **There is still no FAST CI lane.** `.github/` now exists, but it holds only
   `evaluation-gate.yml`. docs/CODE_QUALITY.md's FAST lane (lint, types, tests,
