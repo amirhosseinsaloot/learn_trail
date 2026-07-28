@@ -30,6 +30,27 @@ import type { components } from "./schema.gen";
  */
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+/**
+ * Where the browser reaches the trace viewer (Phase 5).
+ *
+ * Also a URL and also resolved outside the compose network, so also localhost —
+ * the backend exports spans to `http://phoenix:6006`, which means nothing here.
+ */
+export const PHOENIX_URL = process.env.NEXT_PUBLIC_PHOENIX_URL ?? "http://localhost:6006";
+
+/**
+ * A deep link to one trace.
+ *
+ * The single place in the frontend that knows the trace backend's URL shape.
+ * `docs/decisions/0002-no-otel-collector.md` keeps the *instrumentation* vendor
+ * neutral; a clickable link cannot be — someone has to know what a Phoenix URL
+ * looks like. Confining it to one function is what makes swapping the backend a
+ * one-function edit rather than a search.
+ */
+export function traceUrl(traceId: string): string {
+  return `${PHOENIX_URL}/projects/default/traces/${traceId}`;
+}
+
 export const api = createClient<import("./schema.gen").paths>({ baseUrl: API_BASE_URL });
 
 /** A chat without its transcript — what the sidebar lists. */

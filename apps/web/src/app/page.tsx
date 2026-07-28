@@ -15,7 +15,14 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SummaryReview } from "@/components/SummaryReview";
-import { API_BASE_URL, api, type Chat, type ChatDetail, type SummaryDraft } from "@/lib/api/client";
+import {
+  API_BASE_URL,
+  api,
+  type Chat,
+  type ChatDetail,
+  type SummaryDraft,
+  traceUrl,
+} from "@/lib/api/client";
 import { type AnswerBlocked, type SafetyNotice, streamAnswer } from "@/lib/api/stream";
 
 export default function ChatPage() {
@@ -328,7 +335,12 @@ function Transcript({
         <p className="m-auto text-sm text-slate-600">Ask something to start.</p>
       ) : (
         chat?.messages.map((message) => (
-          <Turn key={message.id} speaker={message.role} content={message.content} />
+          <Turn
+            key={message.id}
+            speaker={message.role}
+            content={message.content}
+            traceId={message.trace_id ?? null}
+          />
         ))
       )}
 
@@ -356,15 +368,33 @@ function Turn({
   speaker,
   content,
   pending = false,
+  traceId = null,
 }: {
   readonly speaker: string;
   readonly content: string;
   readonly pending?: boolean;
+  readonly traceId?: string | null;
 }) {
   const isUser = speaker === "user";
   return (
     <article className={`flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
-      <span className="text-xs uppercase tracking-widest text-slate-600">{speaker}</span>
+      <span className="flex items-center gap-2 text-xs uppercase tracking-widest text-slate-600">
+        {speaker}
+        {/* The Phase 5 criterion, made one click away: "this answer was poor"
+            becomes the trace that shows where it went wrong. Only on turns a
+            model produced — a user's question has nothing to trace. */}
+        {traceId !== null && (
+          <a
+            href={traceUrl(traceId)}
+            target="_blank"
+            rel="noreferrer"
+            title={`trace ${traceId}`}
+            className="normal-case tracking-normal text-slate-600 underline decoration-dotted hover:text-sky-400"
+          >
+            trace ↗
+          </a>
+        )}
+      </span>
       <p
         className={`max-w-prose whitespace-pre-wrap rounded px-3 py-2 text-sm ${
           isUser ? "bg-sky-500/10 text-sky-100" : "bg-slate-800/60 text-slate-200"

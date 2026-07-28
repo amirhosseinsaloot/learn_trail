@@ -78,6 +78,12 @@ class MessageRead(BaseModel):
     sequence_number: int
     created_at: datetime
 
+    #: The trace that produced this turn (Phase 5), or `None` for a user turn and
+    #: for anything answered before tracing existed. Read through `Message`'s own
+    #: property, so the client never has to know a `model_run` table exists —
+    #: what it needs is the handle that opens the trace.
+    trace_id: str | None = None
+
 
 class ChatRead(BaseModel):
     """A chat without its messages — the list view.

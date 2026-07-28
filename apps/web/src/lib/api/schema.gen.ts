@@ -607,6 +607,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Trace Id */
+            trace_id?: string | null;
         };
         /**
          * MessageRole

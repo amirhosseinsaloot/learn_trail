@@ -29,7 +29,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from enum import StrEnum
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from sqlalchemy import (
     CheckConstraint,
@@ -47,6 +47,9 @@ from sqlalchemy import Enum as SqlEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database.base import Base
+
+if TYPE_CHECKING:
+    from database.models.knowledge import ModelRun
 
 # Length for every enum-backed VARCHAR column below. Wide enough for the values
 # in use and any plausible sibling, narrow enough that a typo'd value is
@@ -240,6 +243,26 @@ class Message(Base):
     model_run_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("model_run.id", ondelete="SET NULL")
     )
+
+    #: Eager, and it has to be. A transcript is serialised straight out of the
+    #: session, and a lazy load triggered by attribute access during that
+    #: serialisation raises `MissingGreenlet` on an async session — the same trap
+    #: `_commit_mutation` documents in the API layer.
+    #:
+    #: The class is named as a string because `ModelRun` lives in the knowledge
+    #: module, which imports this one. SQLAlchemy resolves it through the registry,
+    #: so the import cycle never has to exist.
+    model_run: Mapped[ModelRun | None] = relationship(lazy="selectin")
+
+    @property
+    def trace_id(self) -> str | None:
+        """The trace that produced this turn, if it was produced by a model.
+
+        Exposed on the message rather than making every client join: "show me why
+        this answer was poor" is one click from a transcript, and a link that
+        needed a second request would not be one.
+        """
+        return self.model_run.trace_id if self.model_run is not None else None
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

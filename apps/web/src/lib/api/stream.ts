@@ -23,6 +23,13 @@ export interface AnswerDone {
   readonly provider_model: string;
   readonly input_tokens: number;
   readonly output_tokens: number;
+  /**
+   * The trace this answer was produced inside (Phase 5), or null if untraced.
+   *
+   * Sent on the wire as well as stored, so the link is available the moment the
+   * answer lands rather than only after the transcript is re-read.
+   */
+  readonly trace_id: string | null;
 }
 
 /**
