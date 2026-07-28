@@ -145,9 +145,41 @@ effect instead. Re-measured:
 That change closed Phase 6's evaluation gate (the rails are fingerprinted), which
 is exactly what it is for; the golden suite was re-run and passes 28/28.
 
-Next: Phase 8, search across approved learnings. It brings pgvector, embeddings
-and LlamaIndex, plus Ragas for retrieval evaluation — and `packages/evals` now has
-somewhere obvious for a `retrieval/` dataset to go.
+Phase 8 added retrieval. Postgres moved to `pgvector/pgvector:0.8.5-pg18`,
+`learning_chunk` holds chunks with 1536-dimension embeddings behind an HNSW index
+and a GIN full-text index, and `learning-embedding` joined the gateway as an alias
+like any other.
+
+**Attribution is a fact about retrieval, not a claim in the model's prose.** The
+answer is built from chunks, each chunk carries the id of the Learning it came
+from, and the citation list is those ids — nothing parses "[1]" markers, so the
+model cannot invent a source or forget one.
+
+Verified live against three Learnings seeded through the real approval flow:
+questions about indexes and about vector databases each cited exactly the right
+Learning; "How do I make sourdough bread?" returned `grounded: false` with no
+citations and no model call at all.
+
+That last one only works because of a **measured** distance floor. Without it a
+nearest neighbour always exists, and the first run returned five confident
+citations for the bread question:
+
+    relevant question ....................... 0.215 - 0.338
+    loosely related (slow SQL query vs an
+      index Learning, which SHOULD match) ... 0.744
+    unrelated (bread, marathons, football) .. 0.887 - 0.974
+
+0.80 sits in the clean gap. Re-derive it if the embedding model changes — those
+numbers are a property of that model's vector space, not of this code.
+
+Retrieval is evaluated on its own terms — precision, recall, faithfulness —
+because judging an *answer* cannot distinguish "right passages, poor answer" from
+"best possible answer, wrong passages". **Not via Ragas**: 0.4.3 cannot be
+imported at all, see [plans/phase-8.md](../plans/phase-8.md). Recall is 1.00 on
+all three cases.
+
+Next: Phase 9, prompt optimization (DSPy). Start with the chat system prompt —
+see the Phase 6 note above, which is the same finding from the other direction.
 
 Phase 0 tasks, for reference: task 1 `1de4a59`, 2 `1a603eb`, 3 `0c56b7f`,
 4 `2b0e933`, 5 `06b9736`, 6 `6132a66`, 7 `600d919`, 8 `e7bed57`, 9 `872bcb5`.
