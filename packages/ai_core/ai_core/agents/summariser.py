@@ -68,7 +68,7 @@ class SummaryGenerationError(RuntimeError):
     """
 
 
-def _agent(prompt: Prompt) -> Agent[None, LearningSummary]:
+def _agent(prompt: Prompt, temperature: float | None = None) -> Agent[None, LearningSummary]:
     """Build the typed agent for a prompt version.
 
     Not cached: the agent closes over a model object, and caching one would
@@ -83,11 +83,18 @@ def _agent(prompt: Prompt) -> Agent[None, LearningSummary]:
         output_type=LearningSummary,
         instructions=prompt.template.system,
         retries=VALIDATION_RETRIES,
-        model_settings=ModelSettings(max_tokens=prompt.model_settings.max_tokens),
+        # `temperature` is omitted entirely when None, for the reason
+        # `CompletionRequest.temperature` documents: reasoning-tier models reject
+        # it and the gateway runs with `drop_params: false`, so an explicit null
+        # is an error rather than a no-op. Only the evaluation path sets it.
+        model_settings=ModelSettings(
+            max_tokens=prompt.model_settings.max_tokens,
+            **({} if temperature is None else {"temperature": temperature}),
+        ),
     )
 
 
-async def summarise(transcript: str) -> GeneratedSummary:
+async def summarise(transcript: str, *, temperature: float | None = None) -> GeneratedSummary:
     """Distil a conversation into a validated `LearningSummary`.
 
     Raises `SummaryGenerationError` if the model cannot produce output that
@@ -99,7 +106,7 @@ async def summarise(transcript: str) -> GeneratedSummary:
     alias = ModelAlias(prompt.model_settings.alias)
 
     try:
-        result = await _agent(prompt).run(prompt.render_user(transcript=transcript))
+        result = await _agent(prompt, temperature).run(prompt.render_user(transcript=transcript))
     except GatewayError:
         # Already a domain error; let it through rather than relabelling a
         # transport failure as a generation failure.

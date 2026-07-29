@@ -1,0 +1,11 @@
+{
+  "id": "opt-01-index-vs-primary-key",
+  "transcript": "user: What is the difference between a database index and a primary key?\nassistant: A primary key uniquely identifies a row and cannot be NULL. It implies a unique index. An index is a separate structure that speeds up lookups; it can be non-unique and can allow NULLs.",
+  "required_points": [
+    "a primary key uniquely identifies a row",
+    "a primary key implies a unique index",
+    "an index is a separate structure that speeds up lookups"
+  ],
+  "forbidden_claims": ["every index is a primary key"],
+  "notes": "The baseline case: one short exchange with a settled answer and three clearly separable points."
+}

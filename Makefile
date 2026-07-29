@@ -162,7 +162,7 @@ evals-gate: ## Free, offline: is the current prompt/model config covered by a re
 # is for. Silently passing a mixed verdict would let a change that stopped more
 # attacks by refusing more ordinary questions merge on a green tick.
 # --------------------------------------------------------------------------
-.PHONY: redteam redteam-accept redteam-gate evals-retrieval
+.PHONY: redteam redteam-accept redteam-gate evals-retrieval optimize
 
 redteam: ## Measure the safety posture and compare it against the recorded baseline
 	set -a; [ -f .env ] && . ./.env; set +a; \
@@ -174,6 +174,14 @@ redteam-accept: ## Measure, then promote the result to be the new baseline
 
 # Retrieval evaluation (Phase 8). Needs the stack up: there must be a library to
 # retrieve from, and each metric is a judge call.
+# Prompt optimization (Phase 9). Optimizes on the train split only and compares
+# on held-out — the criterion is that the gain survives data the optimizer never
+# saw. Costs breadth x depth x |train| generations plus the two comparisons.
+optimize: ## Optimize the summary instruction and compare on held-out examples
+	uv sync --all-groups --extra optimize
+	set -a; [ -f .env ] && . ./.env; set +a; \
+		LITELLM_BASE_URL=$${LITELLM_BASE_URL:-http://localhost:4000} $(PY) -m evals optimize
+
 evals-retrieval: ## Score retrieval precision, recall and faithfulness
 	set -a; [ -f .env ] && . ./.env; set +a; \
 		LITELLM_BASE_URL=$${LITELLM_BASE_URL:-http://localhost:4000} \

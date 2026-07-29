@@ -22,6 +22,7 @@ dependencies = [
 # command without this re-export. `make evals` runs exactly that command.
 [project.optional-dependencies]
 judges = ["learntrail-evals[judges]"]
+optimize = ["learntrail-evals[optimize]"]
 
 # Root is an environment/tooling project, not an installable distribution:
 # no build backend, nothing to build. Application code lives in apps/ and
@@ -149,7 +150,7 @@ ignore_missing_imports = true
 # type-checking on an import it deliberately does not have. `make evals` installs
 # it; `make type-py` must pass without it.
 [[tool.mypy.overrides]]
-module = ["deepeval.*"]
+module = ["deepeval.*", "dspy.*"]
 ignore_missing_imports = true
 
 # `GatewayJudge` subclasses `DeepEvalBaseLLM`. Whether that base is `Any` or a
@@ -162,6 +163,12 @@ ignore_missing_imports = true
 module = ["evals.judge"]
 disallow_subclassing_any = false
 disallow_untyped_calls = false
+
+# `Summarise` subclasses `dspy.Signature`, which is `Any` for the reason above.
+# Scoped to the one module that declares it.
+[[tool.mypy.overrides]]
+module = ["evals.optimize_runner"]
+disallow_subclassing_any = false
 
 [[tool.mypy.overrides]]
 module = ["ai_core.safety.summary_validators"]

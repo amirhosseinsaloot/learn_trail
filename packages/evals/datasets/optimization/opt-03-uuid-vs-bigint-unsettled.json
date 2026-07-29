@@ -1,0 +1,13 @@
+{
+  "id": "opt-03-uuid-vs-bigint-unsettled",
+  "transcript": "user: Should I use UUIDs or bigints for primary keys?\nassistant: It depends and people disagree. UUIDv4 distributes badly in a B-tree and makes indexes larger; bigints are compact and ordered. UUIDv7 is time-ordered and fixes much of that but support is uneven. I would not call this settled.",
+  "required_points": [
+    "UUIDs and bigints trade off differently",
+    "the conversation did not settle the question"
+  ],
+  "forbidden_claims": [
+    "UUIDs are always the correct choice",
+    "bigints are always the correct choice"
+  ],
+  "notes": "Ends explicitly unsettled. A summary that resolves it has manufactured confidence, which is the failure that makes an approved Learning dangerous."
+}

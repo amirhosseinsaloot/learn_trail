@@ -204,7 +204,11 @@ async def _produce(suite: SuiteName, case: EvaluationCase) -> str:
         from ai_core.agents.summariser import summarise
 
         transcript = "\n".join(f"{turn.role}: {turn.content}" for turn in case.messages)
-        return (await summarise(transcript)).summary.model_dump_json()
+        # Same pinning as the conversations branch. Without it the summariser
+        # samples freely and the suite flaps — sum-003 failed one run and passed
+        # the next on identical input, which is a measurement problem wearing a
+        # regression's clothes.
+        return (await summarise(transcript, temperature=EVAL_TEMPERATURE)).summary.model_dump_json()
 
     from ai_core.graphs.chat import ANSWER_PROMPT
     from ai_core.models.aliases import ModelAlias

@@ -20,6 +20,9 @@ from collections.abc import Callable
 from evals.datasets import SUITES, SuiteName
 from evals.gate import gate_status, record_run, requires_evaluation
 
+#: Shown in the CLI's output; the module owns the real path.
+REPORT_RELATIVE = "packages/evals/reports/optimization.json"
+
 
 def _gate(args: argparse.Namespace) -> int:
     changed = [line for line in (args.changed or "").splitlines() if line.strip()]
@@ -193,6 +196,31 @@ def _retrieval(args: argparse.Namespace) -> int:
     return 0 if failed == 0 else 1
 
 
+def _optimize(args: argparse.Namespace) -> int:
+    """Optimize the summary instruction and compare on held-out data (Phase 9)."""
+    from evals.optimize import load_cases, save_report, split
+    from evals.optimize_runner import run_optimization
+
+    train, held_out = split()
+    print(f"{len(load_cases())} cases -> {len(train)} train, {len(held_out)} held out")
+    print("the optimizer sees the train set only\n")
+
+    result = run_optimization()
+    print(f"baseline   train {result.baseline_train:.2f}   held-out {result.baseline_held_out:.2f}")
+    print(
+        f"candidate  train {result.candidate_train:.2f}   held-out {result.candidate_held_out:.2f}"
+    )
+    print(f"\nheld-out delta {result.held_out_delta:+.2f}   verdict: {result.verdict().upper()}")
+    if result.overfitted:
+        print("  gained on its own set and not on unseen data — that is overfitting,")
+        print("  and it is exactly what the exit criterion is asking you to notice")
+
+    save_report(result, cases=len(train) + len(held_out), train=len(train), held_out=len(held_out))
+    print(f"\nrecorded in {REPORT_RELATIVE}")
+    print("NOT promoted: writing a prompt version is a human act (plans/phase-9.md)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="evals", description=__doc__)
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -233,6 +261,11 @@ def main(argv: list[str] | None = None) -> int:
         "retrieval", help="score retrieval precision, recall and faithfulness (calls models)"
     )
     retrieval.set_defaults(handler=_retrieval)
+
+    optimize = subcommands.add_parser(
+        "optimize", help="optimize the summary instruction, compare on held-out (calls models)"
+    )
+    optimize.set_defaults(handler=_optimize)
 
     args = parser.parse_args(argv)
     # `required=True` on the subparsers guarantees a handler is set, so this is a

@@ -1,0 +1,17 @@
+{
+  "baseline": {
+    "held_out": 0.8472,
+    "train": 0.8
+  },
+  "candidate": {
+    "held_out": 0.7361,
+    "train": 0.9333
+  },
+  "cases": 9,
+  "held_out": 4,
+  "held_out_delta": -0.1111,
+  "instruction": "Distil a learning conversation into a structured summary.",
+  "min_improvement": 0.05,
+  "train": 5,
+  "verdict": "overfitted"
+}

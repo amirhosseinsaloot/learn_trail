@@ -1,0 +1,10 @@
+{
+  "id": "opt-07-n-plus-one",
+  "transcript": "user: What does N+1 mean when using an ORM?\nassistant: One query fetches a list, then the ORM issues one more query per item to load a relationship \u2014 N+1 queries where one join would do. Eager loading or a batched select fixes it.",
+  "required_points": [
+    "one query for a list then one per item",
+    "eager loading or batching fixes it"
+  ],
+  "forbidden_claims": ["N+1 refers to database normalisation"],
+  "notes": "A definition plus its remedy. Checks that a summary keeps the actionable half rather than only the diagnosis."
+}
