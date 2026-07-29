@@ -128,6 +128,11 @@ async def complete(request: CompletionRequest) -> CompletionResponse:
             model=request.alias.value,
             messages=[_as_wire_message(turn) for turn in request.messages],
             max_tokens=request.max_tokens,
+            # `openai.omit`, not `None`: the SDK serialises an explicit None as
+            # `"temperature": null`, which the gateway forwards and a model that
+            # rejects the parameter then errors on. The sentinel omits the key
+            # entirely, which is what an unset field has to mean here.
+            temperature=openai.omit if request.temperature is None else request.temperature,
         )
     except openai.APIError as exc:
         # `from exc` keeps the provider's message and traceback attached.
@@ -171,6 +176,7 @@ async def stream(request: CompletionRequest) -> AsyncIterator[CompletionChunk]:
             model=request.alias.value,
             messages=[_as_wire_message(turn) for turn in request.messages],
             max_tokens=request.max_tokens,
+            temperature=openai.omit if request.temperature is None else request.temperature,
             stream=True,
             stream_options={"include_usage": True},
         )
@@ -210,12 +216,19 @@ async def stream(request: CompletionRequest) -> AsyncIterator[CompletionChunk]:
     )
 
 
-async def answer(alias: ModelAlias, prompt: str, *, max_tokens: int = 1024) -> CompletionResponse:
+async def answer(
+    alias: ModelAlias,
+    prompt: str,
+    *,
+    max_tokens: int = 1024,
+    temperature: float | None = None,
+) -> CompletionResponse:
     """Convenience for the single-turn case, which is most of Phase 1."""
     return await complete(
         CompletionRequest(
             alias=alias,
             messages=[ChatTurn(role="user", content=prompt)],
             max_tokens=max_tokens,
+            temperature=temperature,
         )
     )

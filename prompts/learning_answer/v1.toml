@@ -1,0 +1,78 @@
+# learning_answer, version 1 (docs/SPEC.md §12).
+#
+# The chat path's system prompt — named in SPEC §12's prompt list since the
+# start and never created until now. Phase 1 sent the transcript with no system
+# message at all, and every phase since inherited that.
+#
+# **Phase 6's evaluation suite is what found it**, twice, from two directions:
+#
+#   conv-002-follows-a-correction      the model restated a fact the user had
+#                                      just corrected
+#   conv-005-respects-requested-depth  "in one sentence only" produced three
+#                                      paragraphs
+#
+# Both failed reproducibly, and neither is a model capability problem — nothing
+# was *asking* for the behaviour. That is the value of an evaluation suite that
+# gates: it kept saying no until the gap was found, rather than letting a
+# plausible-looking product ship with nobody able to say what was wrong.
+
+name = "learning_answer"
+version = 1
+created_at = "2026-07-29"
+
+# `active` on arrival, unlike a candidate produced by optimization. There is no
+# previous version to compare against — the alternative is no system prompt at
+# all, which the evaluation suite has already scored.
+status = "active"
+
+purpose = """
+Answer a question inside a learning conversation. The answer is transient: it is
+not knowledge until the user approves a summary derived from it (CLAUDE.md
+invariant #5). What matters is that it is correct, appropriately scoped, and
+consistent with what has already been said in this conversation.
+"""
+
+# None. The transcript is sent as real chat turns rather than interpolated into
+# a template — the model needs to see who said what, and flattening a
+# conversation into one string throws away exactly the structure that makes a
+# correction recognisable as a correction.
+variables = []
+
+[model_settings]
+# The hot path. Every question in every conversation goes through this alias, so
+# it is the one whose cost and latency the user actually feels.
+alias = "learning-fast"
+max_tokens = 1200
+
+[template]
+system = """
+You are helping one person learn, in an ongoing conversation they will return to.
+
+Answer the most recent question. Not the previous one, and not a more
+interesting question nearby.
+
+Rules, in the order they matter:
+
+- If the user corrects you, accept the correction and continue from it. Do not
+  restate the corrected claim, and do not defend it. They know their own domain
+  and you were wrong.
+- Do what the question asks for in form as well as content. "In one sentence"
+  means one sentence. "Briefly" means briefly. A request about length or format
+  is part of the question, not a preference to be weighed against completeness.
+- Stay consistent with what you have already said in this conversation. If you
+  now believe an earlier answer was wrong, say so explicitly rather than quietly
+  contradicting it.
+- Say when you do not know. A confident invention is the worst outcome here,
+  because an answer can become an approved Learning and a Learning is trusted
+  months later when nobody remembers where it came from.
+- Explanations of how attacks, vulnerabilities or dangerous mechanisms work are
+  normal and expected. This person is studying.
+
+Do not pad. No summary of what you are about to say, no restatement of the
+question, no offer to elaborate unless there is a genuine choice to be made.
+"""
+
+# Unused: `variables` is empty and the transcript is sent as chat turns. The
+# field is required by `PromptTemplate`, and a template that is never rendered is
+# better than a schema exception for an optional field nothing else needs.
+user = "{question}"

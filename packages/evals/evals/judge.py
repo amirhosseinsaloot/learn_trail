@@ -29,10 +29,39 @@ if TYPE_CHECKING:  # pragma: no cover - import-time only for type checkers
 #: look like a regression that never happened.
 METRIC_VERSION: Final = "learntrail_metrics@1"
 
-#: The alias that judges. `safety-judge` rather than `learning-deep`: judging is
-#: a cheap-model job done many times per run, and using the expensive alias would
-#: make a full evaluation cost more than the answers it grades.
-JUDGE_ALIAS: Final = ModelAlias.SAFETY_JUDGE
+#: The alias that judges.
+#:
+#: **This was `safety-judge` and had to change.** The cheap tier looked like the
+#: obvious choice — judging is a classification task run many times per suite, so
+#: the expensive alias makes an evaluation cost more than the answers it grades.
+#: That reasoning is sound for the *safety* rails, where the question is a coarse
+#: yes/no. It was wrong here, and wrong in the most damaging way.
+#:
+#: With `safety-judge`, two cases failed repeatedly. Both answers were correct.
+#: Asked "In one sentence only: what is a foreign key?", the system answered:
+#:
+#:     "A foreign key is a column or a set of columns in a database table that
+#:      establishes a link between data in two tables by referencing the primary
+#:      key of another table."
+#:
+#: That is one sentence and it does reference another table's key — both grading
+#: notes, exactly satisfied. The judge scored it 0.40-0.60 and explained that it
+#: "fails to encapsulate the definition in a single sentence". The other case was
+#: the same shape: an answer that opens "You're correct that PostgreSQL is
+#: primarily a relational database" was marked down for failing to accept the
+#: correction.
+#:
+#: GEval scores by token probability over a rubric, which asks more of a model
+#: than a yes/no rail does. On `learning-deep` both cases pass on consecutive
+#: runs. The cost difference is real; a suite that fails correct answers is worse
+#: than no suite, because it teaches you to ignore the one that eventually
+#: catches something.
+#:
+#: Worth recording how close this came to being misread: the judge's explanations
+#: were fluent and specific, and reading them alone led to a diagnosis of a
+#: missing chat system prompt. Only looking at the actual answers showed the
+#: system was right and the judge was not.
+JUDGE_ALIAS: Final = ModelAlias.LEARNING_DEEP
 
 
 def gateway_judge() -> DeepEvalBaseLLM:

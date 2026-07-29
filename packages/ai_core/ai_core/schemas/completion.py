@@ -54,11 +54,24 @@ class CompletionRequest(BaseModel):
     # money. Not a target — models stop when they are done.
     max_tokens: int = Field(default=1024, gt=0, le=32_000)
 
-    # Deliberately no `temperature`. Reasoning-tier models reject it outright, and
-    # the gateway runs with `drop_params: false` so a rejected parameter is an
-    # error rather than a silent no-op. Omitting it keeps this request portable
-    # across every model an alias might point at; if a phase ever needs sampling
-    # control, it should arrive with a reason and a test.
+    # Sampling control, added in Phase 9 with the reason this field's previous
+    # comment asked for.
+    #
+    # **The reason.** Phase 9's exit criterion is comparative — "the optimized
+    # program performs better on held-out examples" — and a comparison needs a
+    # reproducible baseline. At the provider's default temperature the *system
+    # under test* is a fresh sample each run, so the same configuration scored
+    # 0.60 and 1.00 on the same case minutes apart. That is enough noise to hide
+    # any improvement an optimizer could plausibly produce, which would make the
+    # criterion unmeasurable rather than merely imprecise.
+    #
+    # **`None` means omit, and that is load-bearing.** Reasoning-tier models
+    # reject `temperature` outright, and the gateway runs with
+    # `drop_params: false` so a rejected parameter is an error rather than a
+    # silent no-op. Defaulting to `None` keeps every existing call byte-identical
+    # to what it sent before and keeps the request portable across whatever model
+    # an alias points at. Only the evaluation path sets it.
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
 
 
 class CompletionResponse(BaseModel):

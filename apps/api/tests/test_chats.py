@@ -617,7 +617,16 @@ async def test_the_whole_transcript_is_sent_as_context(
     await client.post(f"/chats/{chat['id']}/answer")
 
     last_request = seen[-1]
-    assert [turn.content for turn in last_request.messages] == [  # type: ignore[attr-defined]
+    turns = last_request.messages  # type: ignore[attr-defined]
+
+    # Phase 9: the transcript is preceded by the `learning_answer` system prompt.
+    # Asserted as its own fact rather than folded into the list below, because it
+    # is the thing that was *missing* for eight phases — the evaluation suite
+    # found the gap, and this is what would notice if it disappeared again.
+    assert turns[0].role == "system"
+    assert "most recent question" in turns[0].content
+
+    assert [turn.content for turn in turns[1:]] == [
         "first question",
         "ok",
         "second question",
@@ -671,8 +680,13 @@ async def test_the_context_does_not_double_across_turns(
 
     # Turn N sees exactly the 2N-1 turns that precede it: no repeats, and each
     # request grows by exactly one question and one answer.
-    assert [len(request.messages) for request in seen] == [1, 3, 5]
-    assert [turn.content for turn in seen[-1].messages] == ["q1", "ok", "q2", "ok", "q3"]
+    # One system turn plus the transcript, so the counts are [1,3,5] + 1 each.
+    # The *shape* is what this regression test is about — 2, 4, 6 grows by two
+    # per turn; the doubling bug grew by four.
+    assert [len(request.messages) for request in seen] == [2, 4, 6]
+    # `[1:]` skips the `learning_answer` system prompt (Phase 9); this test is
+    # about the transcript not doubling, not about the prompt.
+    assert [turn.content for turn in seen[-1].messages[1:]] == ["q1", "ok", "q2", "ok", "q3"]
 
 
 # --- safety ---------------------------------------------------------------------

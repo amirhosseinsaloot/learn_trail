@@ -52,9 +52,16 @@ from ai_core.graphs.messages import context_from_langchain
 from ai_core.models.aliases import ModelAlias
 from ai_core.models.gateway import stream
 from ai_core.models.pricing import estimate_cost
+from ai_core.prompt_library import load_active
 from ai_core.safety.decisions import SafetyOutcome, SafetyStage
 from ai_core.safety.pipeline import check_input, check_output
-from ai_core.schemas.completion import CompletionRequest, CompletionResponse, FinalChunk, TokenChunk
+from ai_core.schemas.completion import (
+    ChatTurn,
+    CompletionRequest,
+    CompletionResponse,
+    FinalChunk,
+    TokenChunk,
+)
 from ai_core.schemas.model_run import ModelRun, RunStatus
 from ai_core.telemetry import Attr, current_trace_id, set_attributes, span
 from ai_core.telemetry.spans import SPAN_FOR_NODE
@@ -73,6 +80,11 @@ RECORD_RUN_KEY: Final = "record_run"
 #: the two are written at different moments and one survives the other: a blocked
 #: interaction persists no message but must still persist its safety events.
 RECORD_SAFETY_KEY: Final = "record_safety"
+
+#: The prompt version that governs a chat answer (docs/SPEC.md §12). Named once
+#: so the node that picks the alias and the node that sends the system message
+#: cannot end up reading different versions.
+ANSWER_PROMPT: Final = "learning_answer"
 
 #: Signature of that callable: given the finished answer and the id of the model
 #: run that produced it, store it and return the id of the row created. Async
@@ -267,10 +279,13 @@ async def choose_model(state: ChatState) -> dict[str, Any]:
 
     A rule, not a model call — that is what keeps the graph deterministic. Phase
     10 turns this into real routing (by length, cost, or difficulty); until then
-    every chat answer is `learning-fast`, and stating that in its own node is
-    what makes the eventual change a one-node diff.
+    the alias comes from the `learning_answer` prompt version, which is where a
+    prompt's model choice belongs (docs/SPEC.md §12). Reading it here rather than
+    naming `LEARNING_FAST` inline means promoting a prompt version that wants the
+    stronger model is a prompt-library change and not a code change.
     """
-    return {"alias": ModelAlias.LEARNING_FAST}
+    prompt = load_active(ANSWER_PROMPT)
+    return {"alias": ModelAlias(prompt.model_settings.alias)}
 
 
 async def generate_answer(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
@@ -288,7 +303,21 @@ async def generate_answer(state: ChatState, config: RunnableConfig) -> dict[str,
     record_run: RecordRun | None = configurable.get(RECORD_RUN_KEY)
 
     writer = get_stream_writer()
-    request = CompletionRequest(alias=state.alias, messages=context_from_langchain(state.context))
+
+    # The system prompt, prepended to the transcript rather than interpolated
+    # into it. The model has to see who said what — a conversation flattened into
+    # one string throws away exactly the structure that makes a correction
+    # recognisable as a correction, which is one of the two behaviours
+    # `learning_answer@1` exists to fix.
+    prompt = load_active(ANSWER_PROMPT)
+    request = CompletionRequest(
+        alias=state.alias,
+        messages=[
+            ChatTurn(role="system", content=prompt.template.system.strip()),
+            *context_from_langchain(state.context),
+        ],
+        max_tokens=prompt.model_settings.max_tokens,
+    )
 
     answer: CompletionResponse | None = None
     with span(

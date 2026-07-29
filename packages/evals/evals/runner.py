@@ -28,6 +28,19 @@ from ai_core.safety.pipeline import check_input
 from evals.datasets import SUITES, EvaluationCase, SuiteName, load_suite
 from evals.judge import METRIC_VERSION
 
+#: Sampling temperature for everything the suite generates.
+#:
+#: Zero, because the suite's job is comparison. At the provider default the
+#: *system under test* is a fresh sample per run, and the same configuration
+#: scored 0.60 and 1.00 on the same case minutes apart — enough noise to hide any
+#: improvement worth making. Pinning it measures the model's modal behaviour,
+#: which is the thing a prompt change actually moves.
+#:
+#: This makes the evaluation deliberately unlike production, where sampling stays
+#: at the default. That is the right trade: a measurement should hold the things
+#: it is not studying still.
+EVAL_TEMPERATURE: Final = 0.0
+
 #: The bar each metric has to clear. Regression thresholds, in docs/SPEC.md
 #: Phase 6's words — and deliberately not 1.0. A judge model is itself
 #: nondeterministic, so a perfect bar would fail on noise, and a suite that
@@ -193,14 +206,24 @@ async def _produce(suite: SuiteName, case: EvaluationCase) -> str:
         transcript = "\n".join(f"{turn.role}: {turn.content}" for turn in case.messages)
         return (await summarise(transcript)).summary.model_dump_json()
 
+    from ai_core.graphs.chat import ANSWER_PROMPT
     from ai_core.models.aliases import ModelAlias
     from ai_core.models.gateway import complete
+    from ai_core.prompt_library import load_active
     from ai_core.schemas.completion import ChatTurn, CompletionRequest
 
+    prompt = load_active(ANSWER_PROMPT)
     answer = await complete(
         CompletionRequest(
             alias=ModelAlias.LEARNING_FAST,
-            messages=[ChatTurn(role=turn.role, content=turn.content) for turn in case.messages],
+            # The same system prompt the product sends. Without it the suite would
+            # be scoring a configuration nobody runs — and would keep passing a
+            # prompt change that had broken the real path.
+            messages=[
+                ChatTurn(role="system", content=prompt.template.system.strip()),
+                *[ChatTurn(role=turn.role, content=turn.content) for turn in case.messages],
+            ],
+            temperature=EVAL_TEMPERATURE,
         )
     )
     return answer.text

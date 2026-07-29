@@ -284,8 +284,12 @@ async def test_build_context_sends_the_whole_transcript(monkeypatch: pytest.Monk
             ],
         )
     )
-    assert [turn.content for turn in seen[0].messages] == ["first", "answer", "second"]
-    assert [turn.role for turn in seen[0].messages] == ["user", "assistant", "user"]
+    # `[1:]` skips the `learning_answer` system prompt (Phase 9). This test is
+    # about which *transcript* turns build_context selects, and the system
+    # message is not one of them — it is added by generate_answer.
+    assert [turn.content for turn in seen[0].messages[1:]] == ["first", "answer", "second"]
+    assert seen[0].messages[0].role == "system"
+    assert [turn.role for turn in seen[0].messages] == ["system", "user", "assistant", "user"]
 
 
 # --- refusals ------------------------------------------------------------------
