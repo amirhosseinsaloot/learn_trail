@@ -1,30 +1,42 @@
 # State
 
-Current phase: **Phase 8 is COMPLETE. Phase 9 — Prompt optimization is next**
-(see [plans/phase-9.md](../plans/phase-9.md)); nothing in Phase 9 has been
+Current phase: **Phase 9 is COMPLETE. Phase 10 — Model routing is next**
+(see [plans/phase-10.md](../plans/phase-10.md)); nothing in Phase 10 has been
 started.
 
-`make status` reports **Phase 0–5, 7 and 8 PASS**. Phases 9–12 are red as
-designed — and **Phase 6 is red for a real reason**, described below.
+`make status` reports **Phase 0 through 9 PASS**. Phases 10–12 are red, as
+designed. Both gates are green: the evaluation manifest and the red-team baseline
+each describe the current configuration.
 
-## Phase 6 is red, and it should be
+## Correction to the Phase 8 note that used to be here
 
-The evaluation suite fails two conversation cases, reproducibly:
+This section previously said Phase 6 was red because the chat path had no system
+prompt, and named that as a genuine product gap. **That diagnosis was wrong**, and
+it is worth recording how it was reached.
 
-    conv-002-follows-a-correction      3 runs: 0.40, 0.50, pass
-    conv-005-respects-requested-depth  3 runs: 0.60, 0.40, 0.60
+Two cases failed repeatedly, and the judge's explanations were fluent and
+specific: "fails to encapsulate the definition in a single sentence", "fails to
+accept the correction". I read those and inferred a missing prompt. I did not
+read the answers. When I finally did, asked "In one sentence only: what is a
+foreign key?", the system had answered:
 
-Both have the same root cause, and it is a genuine product gap rather than a
-flaky metric: **the chat path sends the transcript with no system prompt at all.**
-`generate_answer` builds `CompletionRequest(alias=..., messages=context)` and
-nothing else, so nothing instructs the model to accept a correction or to respect
-"in one sentence only".
+    "A foreign key is a column or a set of columns in a database table that
+     establishes a link between data in two tables by referencing the primary key
+     of another table."
 
-The evaluation gate is therefore doing exactly its job — refusing to certify a
-configuration whose answers do not meet the bar. Fixing it is a *prompt* change,
-which is Phase 9's subject, and doing it inside Phase 8 would have been widening
-scope to make a gate go green. It is the highest-value thing Phase 9 can start
-with.
+One sentence, referencing another table's key — both grading notes exactly
+satisfied. The other case opened "You're correct that PostgreSQL is primarily a
+relational database" and was marked down for not accepting the correction.
+
+**The judge was wrong, not the product.** `safety-judge` (the cheap tier) is fine
+for a yes/no safety rail and not for GEval, which scores by token probability over
+a rubric. On `learning-deep` both cases pass. The lesson worth keeping is that a
+confident, well-written explanation from a judge is not evidence — the output it
+is judging is.
+
+`learning_answer@1` was added anyway and is now wired: docs/SPEC.md §12 names it
+and it did not exist, so the chat path sent a bare transcript for eight phases.
+It was not the cause of anything, but its absence was real.
 
 All six Phase 1 tasks: `chat`+`message` tables and the async session `421feb8`,
 the LiteLLM gateway and its three aliases `e9a9118`, the chat endpoints
@@ -178,8 +190,39 @@ because judging an *answer* cannot distinguish "right passages, poor answer" fro
 imported at all, see [plans/phase-8.md](../plans/phase-8.md). Recall is 1.00 on
 all three cases.
 
-Next: Phase 9, prompt optimization (DSPy). Start with the chat system prompt —
-see the Phase 6 note above, which is the same finding from the other direction.
+Phase 9 added prompt optimization, and before any of it, made the measurement
+trustworthy — because a comparative criterion cannot be evaluated with a noisy
+metric. Two fixes: the GEval judge moved to `learning-deep` (see the correction
+above), and `CompletionRequest` gained `temperature`, which its own previous
+comment invited "with a reason and a test". `None` still omits the parameter, so
+every production call is unchanged; only the evaluation path pins 0. The suite
+went from one or two failures a run, varying, to consecutive clean runs.
+
+The optimization itself uses DSPy's COPRO on the summary task, over nine
+transcripts split five train / four held out. COPRO because it optimizes
+*instructions* — a few-shot demonstration cannot live in a `prompts/*.toml`
+version, and an optimized artefact nobody can read or review is what §12's
+versioning exists to prevent.
+
+**The honest result is that no result is established:**
+
+    run 1   train 1.00 -> 1.00   held-out 0.71 -> 0.79    IMPROVED
+    run 2   train 0.80 -> 0.90   held-out 0.79 -> 0.71    OVERFITTED
+    run 3   train 0.87 -> 1.00   held-out 0.76 -> 0.88    IMPROVED
+    run 4   train 0.80 -> 0.93   held-out 0.85 -> 0.74    OVERFITTED
+
+Averaging each score over three passes did not settle it, which located the
+variance: it is in *which instruction COPRO lands on*, not in the scoring. So no
+prompt version was promoted — which is what plans/phase-9.md asks, and what the
+runner refuses to do on its own.
+
+What the criterion actually asks for is demonstrated: the apparatus tells a gain
+that generalised from one that did not, and reported `overfitted` on real runs
+where train rose and held-out fell.
+
+Next: Phase 10, model routing. `choose_model` has been a one-line rule since
+Phase 2 and now reads the alias from the `learning_answer` prompt version — that
+node is where routing lands.
 
 Phase 0 tasks, for reference: task 1 `1de4a59`, 2 `1a603eb`, 3 `0c56b7f`,
 4 `2b0e933`, 5 `06b9736`, 6 `6132a66`, 7 `600d919`, 8 `e7bed57`, 9 `872bcb5`.
