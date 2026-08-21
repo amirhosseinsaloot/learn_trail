@@ -220,6 +220,9 @@ export default function ChatPage() {
             <Link href="/learnings" className="text-sm text-sky-400 hover:text-sky-300">
               My Learnings →
             </Link>
+            <Link href="/models" className="text-sm text-slate-400 hover:text-slate-200">
+              Model usage →
+            </Link>
           </div>
         </header>
 

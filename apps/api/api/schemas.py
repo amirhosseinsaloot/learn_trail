@@ -267,3 +267,31 @@ class AskResponse(BaseModel):
     #: like a grounded one is the failure this whole phase guards against.
     grounded: bool
     trace_id: str | None = None
+
+
+# --- model comparison (Phase 10) ------------------------------------------------
+
+
+class ModelUsage(BaseModel):
+    """One alias's usage over the window. Every field comes from `model_run`."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    model_alias: str
+    runs: int
+    #: USD summed across the window. An unpriced model contributes zero, never a
+    #: guess — see ai_core/models/pricing.py.
+    total_cost: float
+    avg_latency_ms: float
+    input_tokens: int
+    output_tokens: int
+    #: Runs that ended blocked by the output safety check. Kept distinct from a
+    #: plain error: it is the safety pipeline working, not the model failing.
+    blocked: int
+
+
+class ModelComparison(BaseModel):
+    """The dashboard payload: usage per alias, best-used first."""
+
+    window_hours: int
+    usage: list[ModelUsage]

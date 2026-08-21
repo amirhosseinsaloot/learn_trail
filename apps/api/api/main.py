@@ -13,7 +13,7 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 from ai_core.telemetry import configure_tracing
 from api.graph import lifespan
-from api.routers import chats, knowledge
+from api.routers import chats, knowledge, models
 
 # Before the app object exists, because the FastAPI instrumentor below binds to
 # whatever tracer provider is global at instrumentation time. Configured here
@@ -73,3 +73,4 @@ FastAPIInstrumentor.instrument_app(
 
 app.include_router(chats.router)
 app.include_router(knowledge.router)
+app.include_router(models.router)

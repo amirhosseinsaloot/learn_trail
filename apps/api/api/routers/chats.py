@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
-from typing import Annotated, Any
+from datetime import timedelta
+from decimal import Decimal
+from typing import Annotated, Any, Final
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -28,6 +30,7 @@ from sqlalchemy.orm import noload
 
 from ai_core import ChatTurn, CompletionResponse, GatewayError, ModelAlias
 from ai_core.graphs.chat import (
+    BUDGET_KEY,
     PERSIST_KEY,
     RECORD_RUN_KEY,
     RECORD_SAFETY_KEY,
@@ -52,6 +55,17 @@ from api.schemas import (
 )
 from database.models import Chat, ChatStatus, Message, MessageRole, ModelRun, SafetyEvent
 from database.session import session
+
+#: Rolling-window spend ceiling for one chat, in USD (Phase 10). Past this, the
+#: router drops to the cheap model — cost-aware routing, not a refusal. Per chat
+#: rather than global because a single-user product has one budget per
+#: conversation's worth of curiosity, and a global cap would let one runaway chat
+#: starve every other. Deliberately generous: it is a backstop against a loop,
+#: not a paywall.
+CHAT_SPEND_CEILING_USD: Final = Decimal("0.50")
+
+#: The window the ceiling applies over.
+SPEND_WINDOW = timedelta(hours=24)
 
 router = APIRouter(prefix="/chats", tags=["chats"])
 
@@ -446,6 +460,26 @@ async def stream_answer(chat_id: uuid.UUID, db: Session, graph: ChatGraph) -> St
             async for frame in _answer_events():
                 yield frame
 
+    async def budget_exhausted() -> bool:
+        """Whether this chat has spent past its window's ceiling (Phase 10).
+
+        A fresh query rather than a cached figure: the previous turn's own run is
+        already committed by the time routing for this turn runs, so the sum
+        reflects spend up to and including a moment ago. Null costs (an unpriced
+        model) are treated as zero by `coalesce`, which is the honest floor — an
+        unknown cost cannot be counted as spend.
+        """
+        since = func.now() - SPEND_WINDOW
+        spent = (
+            await db.execute(
+                select(func.coalesce(func.sum(ModelRun.estimated_cost), 0)).where(
+                    ModelRun.created_at >= since,
+                    ModelRun.operation == "chat.answer",
+                )
+            )
+        ).scalar_one()
+        return Decimal(spent or 0) >= CHAT_SPEND_CEILING_USD
+
     async def _answer_events() -> AsyncIterator[str]:
         state = ChatState(chat_id=str(chat.id), messages=context_to_langchain(context))
         config: RunnableConfig = {
@@ -469,6 +503,7 @@ async def stream_answer(chat_id: uuid.UUID, db: Session, graph: ChatGraph) -> St
                 PERSIST_KEY: persist_answer,
                 RECORD_RUN_KEY: record_run,
                 RECORD_SAFETY_KEY: record_safety,
+                BUDGET_KEY: budget_exhausted,
             }
         }
 

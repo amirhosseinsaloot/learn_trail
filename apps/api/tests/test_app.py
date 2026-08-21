@@ -47,6 +47,11 @@ CHAT_OPERATIONS = {
     "/learnings/search": ["post"],
     "/learnings/ask": ["post"],
     "/learnings/reindex": ["post"],
+    # Phase 10: the model-comparison dashboard. Read-only, and the only GET that
+    # aggregates rather than fetches a resource — there is no write counterpart
+    # because `model_run` rows are a byproduct of answering, not something a
+    # client creates.
+    "/models/comparison": ["get"],
     "/learnings": ["get"],
     "/learnings/{learning_id}": ["delete", "get", "patch"],
     "/learnings/{learning_id}/restore": ["post"],

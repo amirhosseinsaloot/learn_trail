@@ -13,6 +13,7 @@ covered by the Phase 2 exit-criterion test.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -452,3 +453,108 @@ async def test_the_graph_runs_without_a_recorder(monkeypatch: pytest.MonkeyPatch
 
 async def _unused(answer: CompletionResponse, model_run_id: str | None) -> str:
     return "stored-id"
+
+
+# --- routing and fallback (Phase 10) -------------------------------------------
+
+
+async def test_a_simple_question_routes_to_the_fast_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen = _stub_gateway(monkeypatch, parts=["ok"])
+    await _run(ChatState(chat_id="c1", messages=[HumanMessage(content="define an index")]))
+    assert seen[0].alias is ModelAlias.LEARNING_FAST
+
+
+async def test_a_difficult_question_routes_to_the_strong_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen = _stub_gateway(monkeypatch, parts=["ok"])
+    await _run(
+        ChatState(chat_id="c1", messages=[HumanMessage(content="why do B-trees stay balanced?")])
+    )
+    assert seen[0].alias is ModelAlias.LEARNING_DEEP
+
+
+async def test_a_timeout_on_the_strong_model_falls_back_to_the_fast_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The half of the criterion a router without it fails.
+
+    The strong model hangs before producing anything; the graph abandons it after
+    the forced timeout and serves the answer from the fast model instead. The
+    fallback's tokens are *not* streamed (nothing was shown yet, so there is
+    nothing to contradict), but the answer is persisted and `used_fallback` is set.
+    """
+    from ai_core.graphs.chat import GENERATION_TIMEOUT_KEY
+    from ai_core.models.aliases import ModelAlias as _Alias
+
+    seen: list[Any] = []
+
+    async def routing_stream(request: Any) -> AsyncIterator[Any]:
+        seen.append(request)
+        if request.alias is _Alias.LEARNING_DEEP:
+            # Hang past the forced timeout without yielding anything.
+            await asyncio.sleep(5)
+            yield FinalChunk(response=_answer("never reached"))
+        else:
+            yield TokenChunk(text="fallback answer")
+            yield FinalChunk(response=_answer("fallback answer"))
+
+    monkeypatch.setattr(chat_module, "stream", routing_stream)
+
+    stored: list[str] = []
+
+    async def persist_answer(answer: CompletionResponse, model_run_id: str | None) -> str:
+        stored.append(answer.text)
+        return "stored-id"
+
+    graph = build_chat_graph().compile(checkpointer=InMemorySaver())
+    config: RunnableConfig = {
+        "configurable": {
+            "thread_id": "fallback",
+            PERSIST_KEY: persist_answer,
+            GENERATION_TIMEOUT_KEY: 0.2,
+        }
+    }
+    # A difficult question -> strong model first.
+    state = ChatState(chat_id="c1", messages=[HumanMessage(content="compare A and B in depth")])
+    async for _ in graph.astream(state, config=config, stream_mode=["custom"]):
+        pass
+
+    final = (await graph.aget_state(config)).values
+    assert [request.alias for request in seen] == [
+        ModelAlias.LEARNING_DEEP,
+        ModelAlias.LEARNING_FAST,
+    ]
+    assert stored == ["fallback answer"]
+    assert final["used_fallback"] is True
+
+
+async def test_budget_exhaustion_forces_the_cheap_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A difficult question is answered on the fast model when the budget is spent."""
+    from ai_core.graphs.chat import BUDGET_KEY
+
+    seen = _stub_gateway(monkeypatch, parts=["ok"])
+
+    async def exhausted() -> bool:
+        return True
+
+    graph = build_chat_graph().compile(checkpointer=InMemorySaver())
+
+    async def persist_answer(answer: CompletionResponse, model_run_id: str | None) -> str:
+        return "stored-id"
+
+    config: RunnableConfig = {
+        "configurable": {
+            "thread_id": "budget",
+            PERSIST_KEY: persist_answer,
+            BUDGET_KEY: exhausted,
+        }
+    }
+    state = ChatState(chat_id="c1", messages=[HumanMessage(content="why is this hard to answer?")])
+    async for _ in graph.astream(state, config=config, stream_mode=["custom"]):
+        pass
+
+    final = (await graph.aget_state(config)).values
+    # Routed cheap despite being assessed difficult.
+    assert seen[0].alias is ModelAlias.LEARNING_FAST
+    assert final["difficulty"] == "difficult"

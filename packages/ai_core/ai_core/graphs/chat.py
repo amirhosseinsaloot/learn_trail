@@ -36,6 +36,7 @@ function of its inputs, which is most of why the criterion is testable at all.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from time import perf_counter
 from typing import Annotated, Any, Final
@@ -50,8 +51,9 @@ from pydantic import BaseModel, Field
 
 from ai_core.graphs.messages import context_from_langchain
 from ai_core.models.aliases import ModelAlias
-from ai_core.models.gateway import stream
+from ai_core.models.gateway import GatewayError, stream
 from ai_core.models.pricing import estimate_cost
+from ai_core.models.routing import Difficulty, fallback_for, route
 from ai_core.prompt_library import load_active
 from ai_core.safety.decisions import SafetyOutcome, SafetyStage
 from ai_core.safety.pipeline import check_input, check_output
@@ -86,6 +88,20 @@ RECORD_SAFETY_KEY: Final = "record_safety"
 #: cannot end up reading different versions.
 ANSWER_PROMPT: Final = "learning_answer"
 
+#: Injected check for whether this chat's spend window is exhausted (Phase 10).
+#: A callable, not a bool, so it is evaluated when routing runs rather than when
+#: the request was received — and absent by default, because the graph must run
+#: with no database and cost-aware routing is an enhancement, not a precondition.
+BUDGET_KEY: Final = "budget_exhausted"
+
+#: How long one generation attempt may take before it is abandoned and the
+#: fallback alias is tried (Phase 10). Overridable per-run through
+#: `config["configurable"]`, which is what lets the exit-criterion test force a
+#: timeout without waiting for one. The default is generous: it is a backstop
+#: against a hung provider, not a latency target.
+GENERATION_TIMEOUT_KEY: Final = "generation_timeout_s"
+DEFAULT_GENERATION_TIMEOUT_S: Final = 90.0
+
 #: Signature of that callable: given the finished answer and the id of the model
 #: run that produced it, store it and return the id of the row created. Async
 #: because the caller's session is async.
@@ -97,6 +113,9 @@ RecordRun = Callable[[ModelRun], Awaitable[str]]
 #: does not depend on the audit trail, but the audit trail must not depend on the
 #: graph succeeding either.
 RecordSafety = Callable[[SafetyOutcome], Awaitable[None]]
+#: Returns True when this chat has spent past its window's ceiling. Async because
+#: the answer lives in the database the caller owns.
+BudgetExhausted = Callable[[], Awaitable[bool]]
 
 
 class GraphError(RuntimeError):
@@ -142,6 +161,17 @@ class ChatState(BaseModel):
 
     #: Chosen by `choose_model`. A role, never a provider model string.
     alias: ModelAlias | None = None
+
+    #: How `choose_model` rated the question (Phase 10). Kept on state so a trace
+    #: and a caller can see *why* an alias was chosen, not only which — a hard
+    #: question answered cheaply because the budget was spent looks identical to a
+    #: misrouted one without this.
+    difficulty: Difficulty | None = None
+
+    #: Set by `generate_answer` when the chosen alias timed out or errored and the
+    #: fallback served the answer instead. The whole point of the phase's exit
+    #: criterion, made observable.
+    used_fallback: bool = False
 
     #: Set by `generate_answer`, consumed by `persist`.
     answer: CompletionResponse | None = None
@@ -274,99 +304,182 @@ async def build_context(state: ChatState) -> dict[str, Any]:
     return {"context": context}
 
 
-async def choose_model(state: ChatState) -> dict[str, Any]:
-    """Pick the alias for this request.
+async def choose_model(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
+    """Route this request to the cheap or the strong model (Phase 10).
 
-    A rule, not a model call — that is what keeps the graph deterministic. Phase
-    10 turns this into real routing (by length, cost, or difficulty); until then
-    the alias comes from the `learning_answer` prompt version, which is where a
-    prompt's model choice belongs (docs/SPEC.md §12). Reading it here rather than
-    naming `LEARNING_FAST` inline means promoting a prompt version that wants the
-    stronger model is a prompt-library change and not a code change.
+    Still a rule and still a model-free node, so the graph stays deterministic and
+    the routing decision stays inspectable: given the question you can say which
+    alias it produced and why. `classify_difficulty` reads the last user turn;
+    `route` maps its verdict to an alias, dropping to the cheap path when the
+    chat's spend window is exhausted (cost-aware routing — a graceful downgrade,
+    never a refusal).
+
+    The `learning_answer` prompt still names a default alias, but routing is the
+    authority on the chat path now. The two agree on the simple case
+    (`learning-fast`); routing is what sends a hard question to `learning-deep`.
     """
-    prompt = load_active(ANSWER_PROMPT)
-    return {"alias": ModelAlias(prompt.model_settings.alias)}
+    question = state.messages[-1].text if state.messages else ""
+
+    configurable: dict[str, Any] = config.get("configurable") or {}
+    budget_check: BudgetExhausted | None = configurable.get(BUDGET_KEY)
+    exhausted = await budget_check() if budget_check is not None else False
+
+    difficulty, alias = route(question, budget_exhausted=exhausted)
+    with span("choose_model") as active:
+        set_attributes(
+            active,
+            {
+                Attr.MODEL_ALIAS: alias.value,
+                "learntrail.routing.difficulty": difficulty.value,
+                "learntrail.routing.budget_exhausted": exhausted,
+            },
+        )
+    return {"alias": alias, "difficulty": difficulty}
+
+
+async def _stream_once(
+    request: CompletionRequest,
+    writer: Any,
+    active: Span,
+    *,
+    allow_stream: bool,
+) -> tuple[CompletionResponse, int]:
+    """One generation attempt. Returns the answer and its latency, or raises.
+
+    `allow_stream` is the fallback's safety catch. Tokens cannot be un-shown, so
+    the first attempt streams to the client but a *fallback* attempt does not —
+    otherwise a strong model that emitted three tokens before hanging, then a
+    fast model that answered fully, would paint two overlapping answers on the
+    screen. The fallback still streams internally to assemble the response; it
+    just does not forward tokens to the writer. The endpoint learns of the
+    fallback and re-reads the persisted answer, which is the real one.
+
+    Raises `GraphError` if the stream ends with no final chunk — a dead
+    connection rather than a finished answer.
+    """
+    started = perf_counter()
+    first_token_at: float | None = None
+    answer: CompletionResponse | None = None
+
+    async for chunk in stream(request):
+        if isinstance(chunk, TokenChunk):
+            if first_token_at is None:
+                first_token_at = perf_counter()
+                active.set_attribute(Attr.FIRST_TOKEN_MS, (first_token_at - started) * 1000)
+            if allow_stream:
+                writer({"token": chunk.text})
+        elif isinstance(chunk, FinalChunk):
+            answer = chunk.response
+
+    latency_ms = int((perf_counter() - started) * 1000)
+    if answer is None:
+        raise GraphError("the model stream ended before it completed")
+
+    # The cost and token counts belong on the model span (docs/SPEC.md §11), and
+    # they are set here — inside the attempt — so a fallback attempt records its
+    # own numbers on its own span rather than the primary's.
+    cost = estimate_cost(answer.provider_model, answer.input_tokens, answer.output_tokens)
+    set_attributes(
+        active,
+        {
+            Attr.PROVIDER_MODEL: answer.provider_model,
+            Attr.INPUT_TOKENS: answer.input_tokens,
+            Attr.OUTPUT_TOKENS: answer.output_tokens,
+            Attr.TOTAL_TOKENS: answer.input_tokens + answer.output_tokens,
+            Attr.ESTIMATED_COST: float(cost) if cost is not None else None,
+        },
+    )
+    return answer, latency_ms
 
 
 async def generate_answer(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
-    """Call the model through the gateway, streaming tokens out as they arrive.
+    """Call the model through the gateway, with a timeout and a fallback (Phase 10).
 
     Tokens are emitted on LangGraph's `custom` stream channel via
-    `get_stream_writer()`. That is what lets the SSE endpoint stream a graph
-    execution: without it the caller would only see state updates after each node
-    finished, and a streamed answer would arrive as one lump at the end.
+    `get_stream_writer()` — that is what lets the SSE endpoint stream a graph
+    execution rather than receive the answer as one lump.
+
+    **The routed alias is tried first, under a timeout.** If it times out before
+    producing anything, or the gateway errors, and a fallback alias exists
+    (`learning-deep -> learning-fast`), the fallback is tried once. This is the
+    half of the exit criterion that a router without it fails: a slow strong model
+    on a hard question would otherwise leave the user with nothing, on exactly the
+    request the routing existed to serve.
+
+    A failure *after* tokens have streamed is not recoverable — the client has
+    already seen output — so it surfaces as an error, the same boundary Phase 4's
+    streaming trade-off documents.
     """
     if state.alias is None:  # pragma: no cover - unreachable via the compiled graph
         raise GraphInputError("choose_model did not run before generate_answer")
 
     configurable: dict[str, Any] = config.get("configurable") or {}
     record_run: RecordRun | None = configurable.get(RECORD_RUN_KEY)
+    timeout_s: float = configurable.get(GENERATION_TIMEOUT_KEY) or DEFAULT_GENERATION_TIMEOUT_S
 
     writer = get_stream_writer()
-
-    # The system prompt, prepended to the transcript rather than interpolated
-    # into it. The model has to see who said what — a conversation flattened into
-    # one string throws away exactly the structure that makes a correction
-    # recognisable as a correction, which is one of the two behaviours
-    # `learning_answer@1` exists to fix.
     prompt = load_active(ANSWER_PROMPT)
-    request = CompletionRequest(
-        alias=state.alias,
-        messages=[
-            ChatTurn(role="system", content=prompt.template.system.strip()),
-            *context_from_langchain(state.context),
-        ],
-        max_tokens=prompt.model_settings.max_tokens,
-    )
+    system = ChatTurn(role="system", content=prompt.template.system.strip())
+    turns = context_from_langchain(state.context)
+
+    # The aliases to try, in order: the routed one, then its fallback if any.
+    # Only the first is allowed to stream to the client — see `_stream_once`.
+    attempts: list[tuple[ModelAlias, bool]] = [(state.alias, True)]
+    fallback = fallback_for(state.alias)
+    if fallback is not None:
+        attempts.append((fallback, False))
 
     answer: CompletionResponse | None = None
-    with span(
-        SPAN_FOR_NODE["generate_answer"],
-        {
-            Attr.SPAN_KIND: "LLM",
-            Attr.MODEL_ALIAS: state.alias.value,
-            Attr.CHAT_ID: state.chat_id,
-        },
-    ) as active:
-        started = perf_counter()
-        first_token_at: float | None = None
-        async for chunk in stream(request):
-            if isinstance(chunk, TokenChunk):
-                if first_token_at is None:
-                    # Time to first token is the number the user actually feels;
-                    # total latency hides a stream that took four seconds to
-                    # start behind one that took four seconds to finish.
-                    first_token_at = perf_counter()
-                    active.set_attribute(Attr.FIRST_TOKEN_MS, (first_token_at - started) * 1000)
-                writer({"token": chunk.text})
-            elif isinstance(chunk, FinalChunk):
-                answer = chunk.response
-        latency_ms = int((perf_counter() - started) * 1000)
-        if answer is not None:
-            cost = estimate_cost(answer.provider_model, answer.input_tokens, answer.output_tokens)
-            # `set_attributes` rather than the span's own method: an unpriced
-            # model gives `cost is None`, and OTel has no null — the helper drops
-            # the key instead of writing the string "None" as a recorded fact.
-            set_attributes(
-                active,
-                {
-                    Attr.PROVIDER_MODEL: answer.provider_model,
-                    Attr.INPUT_TOKENS: answer.input_tokens,
-                    Attr.OUTPUT_TOKENS: answer.output_tokens,
-                    Attr.TOTAL_TOKENS: answer.input_tokens + answer.output_tokens,
-                    Attr.ESTIMATED_COST: float(cost) if cost is not None else None,
-                },
-            )
+    used_alias: ModelAlias = state.alias
+    latency_ms = 0
+    used_fallback = False
+    streamed = False
 
-    # Outside the span, because the span's own id is not what goes on the row —
-    # the *trace* id is, and it is still current here.
+    for index, (alias, is_primary) in enumerate(attempts):
+        request = CompletionRequest(
+            alias=alias,
+            messages=[system, *turns],
+            max_tokens=prompt.model_settings.max_tokens,
+        )
+        with span(
+            SPAN_FOR_NODE["generate_answer"],
+            {Attr.SPAN_KIND: "LLM", Attr.MODEL_ALIAS: alias.value, Attr.CHAT_ID: state.chat_id},
+        ) as active:
+            try:
+                async with asyncio.timeout(timeout_s):
+                    answer, latency_ms = await _stream_once(
+                        request, writer, active, allow_stream=is_primary and not streamed
+                    )
+                if is_primary:
+                    streamed = True
+                used_alias = alias
+                used_fallback = not is_primary
+                break
+            except (TimeoutError, GatewayError) as exc:
+                active.record_exception(exc)
+                active.add_event("generation_failed", {Attr.MODEL_ALIAS: alias.value})
+                # A failure after anything streamed cannot be papered over with a
+                # fallback: the client has already seen tokens from a different
+                # model. Only a clean pre-stream failure may fall back.
+                is_last = index == len(attempts) - 1
+                if streamed or is_last:
+                    raise GraphError(
+                        f"{alias.value} failed to answer ({type(exc).__name__})"
+                    ) from exc
+                # else: loop to the fallback attempt.
+
+    if answer is None:  # pragma: no cover - the loop either set it or raised
+        raise GraphError("no attempt produced an answer")
+
+    cost = estimate_cost(answer.provider_model, answer.input_tokens, answer.output_tokens)
+
     model_run_id: str | None = None
-    if record_run is not None and answer is not None:
+    if record_run is not None:
         model_run_id = await record_run(
             ModelRun(
                 operation="chat.answer",
                 trace_id=current_trace_id(),
-                alias=state.alias,
+                alias=used_alias,
                 provider_model=answer.provider_model,
                 input_tokens=answer.input_tokens,
                 output_tokens=answer.output_tokens,
@@ -376,26 +489,18 @@ async def generate_answer(state: ChatState, config: RunnableConfig) -> dict[str,
             )
         )
 
-    if answer is None:
-        # The stream ended without a final chunk: the connection died rather than
-        # the model finishing. Returning here would let `persist` store a
-        # truncated answer as if it were complete.
-        raise GraphError("the model stream ended before it completed")
-
     if answer.is_empty:
         # A model may legitimately return nothing, but an empty assistant turn is
         # not worth storing — it would sit in the transcript as a turn that said
         # nothing, and from Phase 3 the transcript is what a Learning is derived
-        # from. Raising here means `persist` never runs, which is the behaviour
-        # Phase 1's endpoint had and which the graph must not quietly drop.
+        # from. Raising here means `persist` never runs.
         raise GraphError("the model returned an empty answer")
 
-    # The answer joins `messages` as well as `answer`, so the checkpointed
-    # transcript is the real one — which is what a resumed thread reads back.
     return {
         "answer": answer,
         "messages": [AIMessage(content=answer.text)],
         "model_run_id": model_run_id,
+        "used_fallback": used_fallback,
     }
 
 

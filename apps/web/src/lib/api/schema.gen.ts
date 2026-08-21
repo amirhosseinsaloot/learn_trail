@@ -424,6 +424,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/models/comparison": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Model Comparison
+         * @description Per-alias usage over a rolling window.
+         *
+         *     `window_hours` defaults to a week, which is long enough that a lightly-used
+         *     library still has rows to compare and short enough that a routing change made
+         *     yesterday is not drowned by a month of the old behaviour.
+         *
+         *     Latency and cost are averaged in the database rather than in Python: the rows
+         *     are the authority, and pulling thousands of them across the wire to average
+         *     them here would be the dashboard paying for its own decoration.
+         */
+        get: operations["model_comparison_models_comparison_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -769,6 +797,36 @@ export interface components {
          * @enum {string}
          */
         MessageRole: "user" | "assistant" | "system";
+        /**
+         * ModelComparison
+         * @description The dashboard payload: usage per alias, best-used first.
+         */
+        ModelComparison: {
+            /** Window Hours */
+            window_hours: number;
+            /** Usage */
+            usage: components["schemas"]["ModelUsage"][];
+        };
+        /**
+         * ModelUsage
+         * @description One alias's usage over the window. Every field comes from `model_run`.
+         */
+        ModelUsage: {
+            /** Model Alias */
+            model_alias: string;
+            /** Runs */
+            runs: number;
+            /** Total Cost */
+            total_cost: number;
+            /** Avg Latency Ms */
+            avg_latency_ms: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Blocked */
+            blocked: number;
+        };
         /**
          * SearchResult
          * @description What a plain search returns: passages, no generated answer.
@@ -1521,6 +1579,37 @@ export interface operations {
                     "application/json": {
                         [key: string]: number;
                     };
+                };
+            };
+        };
+    };
+    model_comparison_models_comparison_get: {
+        parameters: {
+            query?: {
+                window_hours?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelComparison"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

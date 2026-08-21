@@ -89,6 +89,11 @@ export type LearningDetail = components["schemas"]["LearningDetail"];
 /** One version of a Learning's content. */
 export type LearningRevision = components["schemas"]["LearningRevisionRead"];
 
+/** Per-alias usage over a window — the model-comparison dashboard (Phase 10). */
+export type ModelComparison = components["schemas"]["ModelComparison"];
+/** One alias's row in that comparison. */
+export type ModelUsage = components["schemas"]["ModelUsage"];
+
 /**
  * The narrative fields, in the order they are shown.
  *

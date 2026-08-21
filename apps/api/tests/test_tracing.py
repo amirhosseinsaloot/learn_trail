@@ -169,7 +169,9 @@ async def test_the_model_span_carries_what_the_answer_cost(client: AsyncClient) 
     docs/SPEC.md §11 lists them under "Capture". They are what makes a trace
     answer "was this answer expensive as well as poor" without a second query.
     """
-    generate = _named(await _answered(client), LLM_GENERATE)
+    # A simple question routes to learning-fast (Phase 10); a marker word like
+    # "why" would route to learning-deep and change the alias assertion below.
+    generate = _named(await _answered(client, "define a primary key"), LLM_GENERATE)
     attributes = generate.attributes or {}
     assert attributes[Attr.INPUT_TOKENS] == 11
     assert attributes[Attr.OUTPUT_TOKENS] == 3
@@ -241,8 +243,14 @@ async def test_a_failed_answer_leaves_an_errored_span(
         raise GatewayError("the provider hung up")
 
     monkeypatch.setattr(chat_module, "stream", dying_stream)
-    spans = await _answered(client)
+    # A simple question so routing stays on one alias and the trace has exactly
+    # one llm.generate span — this test is about the *errored status*, not about
+    # the Phase 10 fallback (which test_chat_graph covers). "why?" would route to
+    # learning-deep and, on an always-failing stub, also exercise the fallback.
+    spans = await _answered(client, "define a primary key")
 
     generate = _named(spans, LLM_GENERATE)
     assert generate.status.is_ok is False
-    assert "hung up" in (generate.status.description or "")
+    assert "learning-fast failed" in (generate.status.description or "") or "hung up" in (
+        generate.status.description or ""
+    )
