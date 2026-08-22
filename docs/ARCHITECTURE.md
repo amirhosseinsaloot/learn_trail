@@ -3,9 +3,10 @@
 The overall shape of LearnTrail: what the layers are, how a request moves through
 them, who owns what, and which parts exist today.
 
-This is a **map, not a status report**. Every component below is marked with the
-phase that introduces it, because most of them do not exist yet. For what is
-actually built, run:
+This is a **map, not a status report**. The 13-phase roadmap (0–12) is complete,
+so every component below is built — but the phase that introduced each is kept in
+the margin, because the shape of the system is easier to read as the order it grew
+in. Markers are claims about intent; the only claim about reality is:
 
 ```bash
 make status
@@ -16,7 +17,7 @@ condensed structural view. The cross-phase rules that constrain every box below
 are in [../CLAUDE.md](../CLAUDE.md) — read those first, they explain several
 choices that otherwise look arbitrary.
 
-Legend: **built** · *planned (Phase N)*
+Legend: **built** — everything here is, as of Phase 12.
 
 ---
 
@@ -31,8 +32,11 @@ Design decisions here follow from constraints, not taste:
    FastAPI; FastAPI talks to models only through the LiteLLM gateway. There is no
    code path from the frontend to a model API.
 3. **Every model call goes through an alias** (`learning-fast`, `learning-deep`,
-   `safety-judge`) — never a provider/model string. Swapping a provider is a
-   gateway config change, not an application change.
+   `safety-judge`, `learning-embedding`, `learning-local`) — never a
+   provider/model string. Swapping a provider, or moving a role to a local model,
+   is a gateway config change, not an application change. This is what let model
+   routing (Phase 10) and a local model (Phase 11) drop in without touching
+   application code.
 4. **The model drafts; only a human promotes.** Nothing becomes an approved
    Learning without an explicit human approval action. This is why the write path
    for knowledge is split in two — draft storage and approved storage are
@@ -58,9 +62,9 @@ flowchart TD
         gateway["<b>LiteLLM Proxy</b> — model gateway<br/>aliases, routing, fallback, retries, cost"]
     end
 
-    models["Cloud models · optional local runtime"]
-    db[("<b>PostgreSQL</b> + pgvector<br/>chats, messages, drafts,<br/>learnings, safety events, runs")]
-    obs["<b>Phoenix</b> + OTel collector<br/>traces"]
+    models["Cloud models · local runtime (Ollama, Phase 11)"]
+    db[("<b>PostgreSQL</b> + pgvector<br/>chats, messages, drafts, learnings,<br/>chunks, safety events, runs, evaluations")]
+    obs["<b>Phoenix</b><br/>traces (OTLP, no collector — ADR 0002)"]
 
     ui -->|"JSON + SSE"| api
     api --> wf
@@ -97,16 +101,21 @@ Reading the diagram:
 | LangGraph workflow + Postgres checkpointer | Phase 2 | **built** |
 | Structured summary drafts + approval (Pydantic AI) | Phase 3 | **built** |
 | Safety pipeline (NeMo Guardrails, Guardrails AI) | Phase 4 | **built** |
-| OTel + Phoenix tracing | Phase 5 | *planned* |
-| Evaluation (DeepEval, Promptfoo, Ragas) | Phase 6 | *planned* |
-| Red teaming | Phase 7 | *planned* |
-| Retrieval / pgvector search (LlamaIndex) | Phase 8 | *planned* |
-| Prompt optimization (DSPy) | Phase 9 | *planned* |
-| Model routing | Phase 10 | *planned* |
-| Local model runtime | Phase 11 | *planned* |
+| OTel + Phoenix tracing (OTLP direct, no collector) | Phase 5 | **built** |
+| Evaluation + merge gate (DeepEval, Promptfoo) | Phase 6 | **built** |
+| Red teaming + safety-posture gate | Phase 7 | **built** |
+| Retrieval / pgvector hybrid search (LlamaIndex) | Phase 8 | **built** |
+| Prompt optimization (DSPy) | Phase 9 | **built** |
+| Model routing + fallback + cost budget | Phase 10 | **built** |
+| Local model runtime (Ollama) | Phase 11 | **built** |
+| Advanced features — flashcard generation | Phase 12 | **built** |
 
-A framework never arrives early. One new AI concept per phase is a hard rule, so
-"we'll need it eventually" is not a reason to add a dependency now.
+A framework never arrives early. One new AI concept per phase was a hard rule, so
+each row above landed only in its phase. Two things the SPEC named did **not** get
+built, each for a stated reason: a standalone **OTel collector** (Phoenix speaks
+OTLP directly — [ADR 0002](decisions/0002-no-otel-collector.md)), and **Ragas**
+for retrieval evaluation (0.4.3 is unimportable against current langchain; its
+metrics are reimplemented in `packages/evals`).
 
 ---
 
@@ -126,14 +135,18 @@ LangGraph invocation, checkpointed per chat thread
         ├─ validate_input ───────── the request is answerable at all
         ├─ input_safety_check ───── size, NeMo rails (injection + jailbreak),
         │                           PII/secret detection ──┐ refused → END
-        ├─ build_context ────────── working context: which messages and which
-        │                           approved learnings to send (see §6)
-        ├─ choose_model ─────────── pick an alias: learning-fast vs learning-deep
-        ├─ generate_answer ──────── LiteLLM call, tokens streamed back through SSE
+        ├─ build_context ────────── working context: which messages to send (§6)
+        ├─ choose_model ─────────── route by difficulty (Phase 10): a simple
+        │                           question → learning-fast, a hard one →
+        │                           learning-deep; forced cheap past a spend
+        │                           ceiling, forced local in privacy mode
+        ├─ generate_answer ──────── LiteLLM call, tokens streamed back through SSE,
+        │                           under a timeout with one fallback attempt
+        │                           (learning-deep → learning-fast) if it hangs
         ├─ output_safety_check ──── rails over the answer in context of the
         │                           question, PII scan ────┐ refused → END
-        └─ persist ──────────────── message rows, safety_event backfill
-        │                           (model_run metadata arrives in Phase 5)
+        └─ persist ──────────────── message rows, model_run (cost/latency/trace),
+        │                           safety_event backfill
         ▼
 Stream ends. Nothing here creates an approved Learning.
 ```
@@ -148,10 +161,14 @@ buffering the answer to check it first would cost the streaming the product is
 built around. The guarantee is not "you never see it" but "it is never kept" —
 and the stream carries a `discard` signal so the client drops what it drew.
 
-The path degrades gracefully backwards: in **Phase 1** it is a direct LiteLLM call
-from the endpoint with no graph; Phase 2 replaced that call with the graph;
-Phase 4 added the safety nodes and the first conditional edges. Each phase
-substitutes a real implementation for a simpler one at the same seam.
+Each phase substituted a real implementation for a simpler one at the same seam:
+**Phase 1** was a direct LiteLLM call from the endpoint with no graph; **Phase 2**
+replaced it with the graph; **Phase 4** added the safety nodes and the first
+conditional edges; **Phase 5** made every node a span; **Phase 10** turned
+`choose_model` from a one-line rule into real routing and gave `generate_answer`
+its timeout-and-fallback. `choose_model` and `generate_answer` are the two nodes
+that changed most, and both changed in place — the graph's shape is the same
+seven nodes throughout.
 
 ### Learning approval — the human gate
 
@@ -173,6 +190,20 @@ output; a learning is human-approved knowledge. No code path promotes a draft
 without an explicit approval action, and every change to an approved learning
 writes a `learning_revision` so the history is auditable.
 
+### Two more model paths, both reading only approved knowledge
+
+- **Ask across My Learnings (Phase 8).** `POST /learnings/ask` embeds the
+  question, runs hybrid search (pgvector cosine + Postgres full-text, fused by
+  reciprocal rank) over `learning_chunk`, and answers *only* from what it
+  retrieved — with a distance floor, so an off-topic question returns
+  `grounded: false` and no citation rather than the nearest unrelated passage.
+  Every citation is the id of a chunk that was actually placed in context, not a
+  claim the model made about its own sources. Only approved Learnings are chunked;
+  a draft can never supply an answer.
+- **Flashcards (Phase 12).** `POST /learnings/{id}/flashcards` generates a
+  validated set from one approved Learning, on demand and never stored — a study
+  aid derived from knowledge, not knowledge itself, so it needs no approval gate.
+
 ---
 
 ## 4. Process view — docker-compose
@@ -182,23 +213,30 @@ that introduces its concept, so this file grows over time.
 
 | Service | Image / build | Host port | Phase | Status |
 |---|---|---|---|---|
-| `postgres` | `postgres:18-alpine` | 5432 | 0 | **built** |
+| `postgres` | `pgvector/pgvector:0.8.5-pg18` | 5432 | 0 (pgvector in 8) | **built** |
 | `backend` | `infra/docker/backend.Dockerfile` | 8000 | 0 | **built** |
 | `frontend` | `infra/docker/frontend.Dockerfile` | 3000 | 0 | **built** |
-| `litellm` | LiteLLM Proxy | — | 1 | *planned* |
-| `phoenix` + OTel collector | Phoenix | — | 5 | *planned* |
-| local model runtime | optional | — | 11 | *planned* |
+| `litellm` | `ghcr.io/berriai/litellm` | 4000 (loopback) | 1 | **built** |
+| `phoenix` | `arizephoenix/phoenix` | 6006 (loopback) | 5 | **built** |
+| `ollama` | `ollama/ollama` | 11434 (loopback) | 11 | **built**, profile-gated |
 
-Every service declares a healthcheck. That is not a convention — it is the
-Phase 0 exit criterion, asserted by
+Five mandatory services, plus `ollama` behind the `local` compose profile — it is
+the *optional* local runtime, so it does not start with `make up` and is absent
+from the default service list. `postgres` moved from `postgres:18-alpine` to the
+pgvector image in Phase 8 (same major, so the volume was read in place).
+
+Every mandatory service declares a healthcheck. That is not a convention — it is
+the Phase 0 exit criterion, asserted by
 [tests/phases/test_phase_0.py](../tests/phases/test_phase_0.py), which compares
-the service list by **set equality**. Adding a service means updating that test
-in the same commit.
+the service list by **set equality** (the profiled `ollama` is excluded by
+design). Adding a mandatory service means updating that test in the same commit.
 
-Both current images are **development** images: the backend runs uvicorn
-`--reload` over bind-mounted source, the frontend runs `next dev`. Production
-build stages land when there is something to deploy. Driven by `make up`,
-`make down`, `make logs`, `make ps`.
+All images are **development** images: the backend runs uvicorn `--reload` over
+bind-mounted source, the frontend runs `next dev`. The loopback-only bindings on
+`litellm`, `phoenix` and `ollama` are deliberate — a money- or compute-spending
+endpoint should not be reachable from the local network. Production build stages
+land when there is something to deploy. Driven by `make up`, `make down`,
+`make logs`, `make ps`.
 
 ---
 
@@ -209,26 +247,34 @@ No `user` table, no `user_id` column, in any of these.
 ```text
 conversation        chat, message
 drafting            summary_draft
-knowledge           learning, learning_revision, tag, learning_tag
-governance          safety_event, model_run, prompt_version
+knowledge           learning, learning_revision
+retrieval           learning_chunk
+governance          safety_event, model_run
 evaluation          evaluation_case, evaluation_result
 ```
 
-Four groups worth understanding as groups:
+Ten tables, understood as groups:
 
 - **conversation** — raw history, the durable record of what was asked.
 - **drafting → knowledge** — the approval boundary described in §3.
+- **retrieval** — `learning_chunk` holds the embedded, searchable pieces of each
+  approved Learning (Phase 8). Chunks are derived and disposable: deleting a
+  Learning cascades to them, and re-indexing rebuilds them.
 - **governance** — why the system did what it did. `safety_event` records each
   safety decision (stage, policy, version, action, severity) separately from the
-  message it judged, so blocking decisions are auditable without mutating
-  content. `model_run` records what was actually called. `prompt_version` carries
-  prompts through `draft → candidate → active → retired`.
-- **evaluation** — the test set and its results, so prompt and model changes are
-  measured rather than eyeballed.
+  message it judged, so blocking decisions are auditable without mutating content.
+  `model_run` records what was actually called — alias, provider model, tokens,
+  cost, latency, trace id — which is what the routing dashboard and the cost
+  budget read.
+- **evaluation** — the golden test set and its results, so prompt and model
+  changes are measured rather than eyeballed.
 
-Currently the schema is **empty**: `packages/database` defines `Base` with a
-constraint naming convention and zero tables, and Alembic has zero revisions.
-`chat` and `message` arrive in Phase 1.
+Three tables from SPEC §17's initial list were **not** built, because no phase
+needed them: `tag` and `learning_tag` (a Learning's suggested tags live in its
+JSONB `structured_content`, and single-user search never needed a tag join), and
+`prompt_version` (prompt versioning is file-based — one immutable `prompts/<name>/vN.toml`
+per version, carried on each record as a string like `learning_summary@1`, so a
+table would duplicate what the filesystem and git already version).
 
 ---
 
@@ -239,12 +285,14 @@ Three distinct layers, deliberately not collapsed into one:
 | Layer | Where it lives | Rule |
 |---|---|---|
 | Raw conversation | `chat` / `message` in Postgres | Everything, kept |
-| Working context | Assembled per request by `build_context` | A *subset* chosen per request — full history, a recent window, previous-summary-plus-recent, or relevance-selected |
+| Working context | Assembled per request by `build_context` | A *subset* chosen per request. Chat still sends the full transcript; a recent window or previous-summary-plus-recent are the documented successors, and this node is where they would land |
+| Retrieved knowledge | `learning_chunk`, via hybrid search | The *ask* path (§3) pulls only the approved chunks relevant to a question — this is where "relevance-selected" actually lives |
 | Approved long-term memory | `learning` | Only approved learnings count as durable knowledge |
 
 The important negative: **messages do not become long-term memory by
 accumulating.** Only the human approval gate creates durable knowledge. Working
-context is a per-request decision, not a growing blob.
+context is a per-request decision, not a growing blob — and retrieval reaches only
+into approved Learnings, never into raw chat history.
 
 ---
 
@@ -253,28 +301,32 @@ context is a per-request decision, not a growing blob.
 ```text
 apps/
   web/                  Next.js + React + TS — browser only          built
-  api/                  FastAPI — HTTP, SSE, request/response schemas built (no routes)
+  api/                  FastAPI — chat, knowledge, models routes     built
 packages/
   ai_core/              the AI application layer
-    graphs/             LangGraph workflows                          Phase 2
-    agents/             Pydantic AI typed components                 Phase 3
+    graphs/             LangGraph workflows (chat, summary)          Phase 2
+    agents/             Pydantic AI typed components (summary, cards) Phase 3, 12
     schemas/            Pydantic schemas for model output            Phase 1+
-    models/             LiteLLM client + alias definitions           Phase 1
-    safety/             the safety pipeline                          Phase 4
-    telemetry/          OTel setup                                   Phase 5
-    retrieval/          LlamaIndex / pgvector search                  Phase 8
-  evals/                datasets, metrics, judges, red_team, reports  Phase 6
-  database/             SQLAlchemy metadata + Alembic                built (0 tables)
-prompts/                prompt text, lifecycle-managed content        Phase 1
+    models/             gateway client, aliases, routing, pricing    Phase 1, 10
+    safety/             the safety pipeline + versioned rails        Phase 4
+    telemetry/          OTel setup, spans, gateway-direct OTLP       Phase 5
+    retrieval/          chunking, embedding, hybrid search           Phase 8
+  evals/                datasets, gate, judges, red_team, reports    Phase 6, 7, 9, 11
+  database/             SQLAlchemy metadata + Alembic (10 tables)    built
+prompts/                learning_summary, learning_answer, flashcards built
 infra/
   docker/               Dockerfiles                                  built
   litellm/              gateway + alias config                       Phase 1
-  phoenix/, otel/       tracing config                               Phase 5
 tests/
-  phases/               executable exit criteria, one per phase      built
+  phases/               executable exit criteria, one per phase      built (0–12 green)
   unit/, integration/, ai/, safety/, end_to_end/                     as needed
+.github/workflows/      evaluation-gate.yml (eval + red-team gates)  Phase 6, 7
 docker-compose.yml                                                   built
 ```
+
+`infra/phoenix/` and `infra/otel/` were planned in SPEC §16 and never created:
+Phoenix needs no config file (it is a plain container) and there is no collector
+to configure.
 
 Two layout details that look like mistakes and are not:
 
@@ -293,28 +345,53 @@ apps/web  ──HTTP──▶  apps/api  ──▶  packages/ai_core  ──▶ 
 ```
 
 Arrows point one way. `packages/database` imports nothing from `ai_core` or
-`api`; `ai_core` does not import `api`. This is enforceable rather than
-aspirational — import-linter contracts land in Phase 1, so a violation fails a
-check instead of surviving review.
+`api`; `ai_core` does not import `api`. `evals` sits *above* everything and is
+imported by nothing in the application. The direction holds by construction and is
+kept by review and mypy — **import-linter was never added** (it is on
+CODE_QUALITY.md's deferred list), so this is a standing convention, not a gate. A
+contract-based check is the honest next hardening step.
 
 ---
 
 ## 8. What exists today
 
-Phase 0 only, and Phase 0 is complete:
+**All 13 phases (0–12) are complete.** `make status` reports every phase green, and
+each phase's exit criterion is an executable test that was mutation-checked — run
+against deliberate breaks in the code it guards, to confirm it fails when it
+should.
 
-- Three healthy containers — Postgres, a FastAPI app with **no routes**, a static
-  Next.js page. `make up` blocks until all three report healthy.
-- `packages/database`: empty metadata, a runnable Alembic env, zero revisions.
+The working product, end to end:
+
+- Ask a question and watch the answer stream in; stop and restart the backend and
+  continue the conversation (the chat is checkpointed, Phase 2).
+- Each answer is routed by difficulty to a cheap or strong model, falls back if one
+  hangs, and is traced through Phoenix with its cost and latency (Phases 5, 10).
+- Every request passes input and output safety checks; a blocked one leaves an
+  audit record and no message (Phase 4).
+- Distil a conversation into a structured draft, review and edit it, and approve it
+  into a Learning — the only path to durable knowledge (Phase 3).
+- Ask across approved Learnings and get an answer with citations to the exact
+  chunks it used, or an honest "nothing covers that" (Phase 8).
+- Generate flashcards from a Learning (Phase 12).
+- A local model can serve chat with no cloud call at all (Phase 11).
+
+The guardrails around all of it:
+
+- **Two merge gates** (`make evals-gate`, `make redteam-gate`): a change to a
+  prompt or model configuration must be covered by a passing evaluation run, and a
+  change to the safety configuration by a fresh red-team measurement. Both are free
+  and offline to check; the runs that feed them cost money and are the SLOW lane.
 - Toolchain: uv + Ruff + mypy strict + Pydantic plugin (Python), pnpm + Biome +
   type-aware ESLint + `tsc --strict` (TypeScript), lefthook hooks, `make fast`.
-- 13 phase tests, of which Phase 0's is real and green and 12 are intentionally
-  failing placeholders.
 
-There is **no model call anywhere in this repo yet**, no `.env`, no LiteLLM, no
-graph, no tables, and no CI. Phase 1 is where the system first talks to a model.
+Known gaps, recorded in [STATE.md](STATE.md): gitleaks is wired but inert, there
+is no FAST CI lane (lint/type/test run in git hooks, not on GitHub — the one
+workflow is the eval/red-team gate), branch protection is not enabled so those
+gates report without blocking, and privacy mode routes chat locally but still
+embeds retrieval through the cloud.
 
 ---
 
-Written by a model, from [SPEC.md](SPEC.md) and the state of the tree. The phase
-markers are claims about intent; `make status` is the only claim about reality.
+Written by a model, from [SPEC.md](SPEC.md) and the state of the tree, and revised
+at the end of Phase 12 to describe the finished system. The phase markers are
+claims about intent; `make status` is the only claim about reality.
