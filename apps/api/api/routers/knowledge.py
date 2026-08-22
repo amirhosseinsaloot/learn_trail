@@ -26,6 +26,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload
 
+from ai_core.agents.flashcards import FlashcardError, generate_flashcards
 from ai_core.agents.summariser import GeneratedSummary, SummaryGenerationError
 from ai_core.graphs.summary import (
     APPLY_DECISION_KEY,
@@ -46,6 +47,8 @@ from api.schemas import (
     AskRequest,
     AskResponse,
     Citation,
+    FlashcardRead,
+    FlashcardSetRead,
     LearningDetail,
     LearningEdit,
     LearningRead,
@@ -525,3 +528,69 @@ async def reindex_learnings(db: Session) -> dict[str, int]:
     replaces a Learning's chunks rather than adding to them.
     """
     return await index_all(db)
+
+
+# --- flashcards (Phase 12) ------------------------------------------------------
+
+
+def _render_learning(learning: Learning) -> str:
+    """Flatten an approved Learning's structured content into prompt text.
+
+    The flashcard model is asked to make cards answerable from this text alone, so
+    every section that carries content is included, each under a heading — the
+    same shape the retrieval chunker uses, and for the same reason: the model
+    needs to see what kind of thing each passage is.
+    """
+    content = learning.structured_content
+    parts: list[str] = [f"Title: {learning.title}"]
+    labels = {
+        "overview": "Overview",
+        "key_concepts": "Key concepts",
+        "distinctions": "Distinctions",
+        "examples": "Examples",
+        "open_questions": "Open questions",
+        "uncertainty_notes": "Uncertainty",
+    }
+    for field, label in labels.items():
+        value = content.get(field)
+        if isinstance(value, str) and value.strip():
+            parts.append(f"{label}: {value.strip()}")
+        elif isinstance(value, list) and value:
+            joined = "; ".join(str(item).strip() for item in value if str(item).strip())
+            if joined:
+                parts.append(f"{label}: {joined}")
+    return "\n\n".join(parts)
+
+
+@router.post("/learnings/{learning_id}/flashcards", status_code=status.HTTP_201_CREATED)
+async def make_flashcards(learning_id: uuid.UUID, db: Session) -> FlashcardSetRead:
+    """Generate revision flashcards from one approved Learning (Phase 12).
+
+    Generated on demand and not stored: flashcards are a study aid derived from
+    knowledge, not knowledge, so they need no approval gate and no table. Ask
+    again to get a fresh set.
+
+    A deleted Learning is refused with a 409, not quietly used — you should not be
+    handed cards from something you removed from your library.
+    """
+    learning = await _load_learning(db, learning_id)
+    if learning.deleted_at is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"learning {learning_id} is deleted; restore it before making flashcards",
+        )
+
+    with span("generate_flashcards", {Attr.CHAT_ID: str(learning_id)}):
+        try:
+            generated = await generate_flashcards(_render_learning(learning))
+        except FlashcardError as exc:
+            # The model answered and what it produced was rejected — a 422, the
+            # same shape summary generation uses for a validation failure.
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        except GatewayError as exc:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+
+    return FlashcardSetRead(
+        learning_id=learning.id,
+        cards=[FlashcardRead(front=card.front, back=card.back) for card in generated.cards],
+    )

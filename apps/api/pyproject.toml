@@ -2,7 +2,6 @@
 name = "learntrail-api"
 version = "0.1.0"
 description = "LearnTrail HTTP API (FastAPI). Top layer of docs/SPEC.md §16."
-readme = "../../README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.121.2",

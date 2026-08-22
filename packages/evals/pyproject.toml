@@ -2,7 +2,6 @@
 name = "learntrail-evals"
 version = "0.1.0"
 description = "LearnTrail evaluation suite: golden datasets, metrics, and the merge gate. docs/SPEC.md §9-10."
-readme = "../../README.md"
 requires-python = ">=3.12"
 dependencies = [
     # The suite scores real answers, so it needs the graphs and the gateway that

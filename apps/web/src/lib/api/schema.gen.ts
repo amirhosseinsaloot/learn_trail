@@ -424,6 +424,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/learnings/{learning_id}/flashcards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make Flashcards
+         * @description Generate revision flashcards from one approved Learning (Phase 12).
+         *
+         *     Generated on demand and not stored: flashcards are a study aid derived from
+         *     knowledge, not knowledge, so they need no approval gate and no table. Ask
+         *     again to get a fresh set.
+         *
+         *     A deleted Learning is refused with a 409, not quietly used — you should not be
+         *     handed cards from something you removed from your library.
+         */
+        post: operations["make_flashcards_learnings__learning_id__flashcards_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/models/comparison": {
         parameters: {
             query?: never;
@@ -638,6 +665,33 @@ export interface components {
          * @enum {string}
          */
         DraftStatus: "pending" | "approved" | "rejected";
+        /**
+         * FlashcardRead
+         * @description One generated flashcard.
+         */
+        FlashcardRead: {
+            /** Front */
+            front: string;
+            /** Back */
+            back: string;
+        };
+        /**
+         * FlashcardSetRead
+         * @description A generated set for one Learning.
+         *
+         *     Carries the `learning_id` it was made from, so the client can show the cards
+         *     beside their source — the cards are only trustworthy as revision if you can
+         *     check them against the Learning they came from.
+         */
+        FlashcardSetRead: {
+            /**
+             * Learning Id
+             * Format: uuid
+             */
+            learning_id: string;
+            /** Cards */
+            cards: components["schemas"]["FlashcardRead"][];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1579,6 +1633,37 @@ export interface operations {
                     "application/json": {
                         [key: string]: number;
                     };
+                };
+            };
+        };
+    };
+    make_flashcards_learnings__learning_id__flashcards_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                learning_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlashcardSetRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

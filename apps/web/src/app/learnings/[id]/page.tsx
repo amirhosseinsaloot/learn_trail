@@ -13,6 +13,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { Flashcards } from "@/components/Flashcards";
 import {
   api,
   FIELD_LABELS,
@@ -220,6 +221,7 @@ export default function LearningPage() {
           ))}
         </ul>
       </section>
+      <Flashcards learningId={params.id} />
     </main>
   );
 }

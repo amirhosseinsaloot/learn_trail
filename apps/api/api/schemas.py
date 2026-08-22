@@ -295,3 +295,27 @@ class ModelComparison(BaseModel):
 
     window_hours: int
     usage: list[ModelUsage]
+
+
+# --- flashcards (Phase 12) ------------------------------------------------------
+
+
+class FlashcardRead(BaseModel):
+    """One generated flashcard."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    front: str
+    back: str
+
+
+class FlashcardSetRead(BaseModel):
+    """A generated set for one Learning.
+
+    Carries the `learning_id` it was made from, so the client can show the cards
+    beside their source — the cards are only trustworthy as revision if you can
+    check them against the Learning they came from.
+    """
+
+    learning_id: uuid.UUID
+    cards: list[FlashcardRead]

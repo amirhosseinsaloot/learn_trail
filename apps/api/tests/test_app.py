@@ -55,6 +55,10 @@ CHAT_OPERATIONS = {
     "/learnings": ["get"],
     "/learnings/{learning_id}": ["delete", "get", "patch"],
     "/learnings/{learning_id}/restore": ["post"],
+    # Phase 12: flashcards generated on demand from an approved Learning. POST
+    # because it triggers generation, not a fetch; not persisted, so there is no
+    # GET counterpart — ask again for a fresh set.
+    "/learnings/{learning_id}/flashcards": ["post"],
 }
 
 

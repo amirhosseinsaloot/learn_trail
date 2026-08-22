@@ -2,7 +2,6 @@
 name = "learntrail-database"
 version = "0.1.0"
 description = "LearnTrail persistence layer: SQLAlchemy metadata + Alembic migration env. Part of docs/SPEC.md §16."
-readme = "../../README.md"
 requires-python = ">=3.12"
 dependencies = [
     # The SQLAlchemy column type for pgvector (Phase 8). Only the type mapping

@@ -1,7 +1,7 @@
 {
-  "fingerprint": "917db1b3c8231218a594de7ac27f65f331658f8fb80d4783e318e2e6a0a2c495",
+  "fingerprint": "a5f866c19d8a07e51aa42b1529420eb4bc9606d626f944aff19b3cb35293c605",
   "passed": true,
-  "recorded_at": "2026-08-22T00:53:15+00:00",
+  "recorded_at": "2026-08-22T21:09:57+00:00",
   "summary": {
     "by_metric": {
       "answer_relevance": {

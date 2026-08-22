@@ -86,6 +86,9 @@ export type SummaryContent = components["schemas"]["SummaryContent"];
 export type Learning = components["schemas"]["LearningRead"];
 /** An approved Learning with its full revision history. */
 export type LearningDetail = components["schemas"]["LearningDetail"];
+
+/** A generated set of revision flashcards for one Learning (Phase 12). */
+export type FlashcardSet = components["schemas"]["FlashcardSetRead"];
 /** One version of a Learning's content. */
 export type LearningRevision = components["schemas"]["LearningRevisionRead"];
 
