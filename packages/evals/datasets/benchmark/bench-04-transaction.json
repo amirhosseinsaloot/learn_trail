@@ -1,0 +1,6 @@
+{
+  "id": "bench-04-transaction",
+  "question": "What does ACID stand for in databases?",
+  "expected_points": ["atomicity", "consistency", "isolation", "durability"],
+  "notes": "Four discrete facts \u2014 coverage is a clean fraction, good for comparing completeness."
+}

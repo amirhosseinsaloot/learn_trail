@@ -22,6 +22,7 @@ from evals.gate import gate_status, record_run, requires_evaluation
 
 #: Shown in the CLI's output; the module owns the real path.
 REPORT_RELATIVE = "packages/evals/reports/optimization.json"
+BENCHMARK_REPORT_RELATIVE = "packages/evals/reports/benchmark.json"
 
 
 def _gate(args: argparse.Namespace) -> int:
@@ -221,6 +222,29 @@ def _optimize(args: argparse.Namespace) -> int:
     return 0
 
 
+def _benchmark(args: argparse.Namespace) -> int:
+    """Run the cloud-vs-local benchmark and record it (Phase 11)."""
+    from evals.benchmark import save_report
+    from evals.benchmark_runner import run_benchmark
+
+    report = asyncio.run(run_benchmark())
+    for side in (report.cloud, report.local):
+        if side.served:
+            print(
+                f"{side.alias:<16} {side.cases} cases   "
+                f"{side.avg_latency_ms:>7.0f} ms   coverage {side.avg_coverage:.2f}   "
+                f"${side.total_cost_usd:.4f}"
+            )
+        else:
+            print(f"{side.alias:<16} not served")
+    for note in report.notes:
+        print(f"\n{note}")
+    save_report(report)
+    print(f"\nrecorded in {BENCHMARK_REPORT_RELATIVE}")
+    # A recorded report is the deliverable, whether or not local was reachable.
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="evals", description=__doc__)
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -261,6 +285,11 @@ def main(argv: list[str] | None = None) -> int:
         "retrieval", help="score retrieval precision, recall and faithfulness (calls models)"
     )
     retrieval.set_defaults(handler=_retrieval)
+
+    benchmark = subcommands.add_parser(
+        "benchmark", help="cloud-vs-local latency/quality/cost benchmark (calls models)"
+    )
+    benchmark.set_defaults(handler=_benchmark)
 
     optimize = subcommands.add_parser(
         "optimize", help="optimize the summary instruction, compare on held-out (calls models)"

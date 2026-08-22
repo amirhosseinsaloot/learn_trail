@@ -31,6 +31,7 @@ from sqlalchemy.orm import noload
 from ai_core import ChatTurn, CompletionResponse, GatewayError, ModelAlias
 from ai_core.graphs.chat import (
     BUDGET_KEY,
+    LOCAL_ONLY_KEY,
     PERSIST_KEY,
     RECORD_RUN_KEY,
     RECORD_SAFETY_KEY,
@@ -66,6 +67,20 @@ CHAT_SPEND_CEILING_USD: Final = Decimal("0.50")
 
 #: The window the ceiling applies over.
 SPEND_WINDOW = timedelta(hours=24)
+
+
+def _privacy_mode() -> bool:
+    """Whether the app is in privacy/offline mode (Phase 11).
+
+    Read from the environment on each request rather than cached at import, so the
+    mode can be flipped by restarting the process with the flag set — no code
+    change, no rebuild. Any of the usual truthy spellings count; anything else,
+    including absence, is off. Cloud-first unless deliberately turned off.
+    """
+    import os
+
+    return os.environ.get("LEARNTRAIL_LOCAL_ONLY", "").strip().lower() in {"1", "true", "yes", "on"}
+
 
 router = APIRouter(prefix="/chats", tags=["chats"])
 
@@ -504,6 +519,7 @@ async def stream_answer(chat_id: uuid.UUID, db: Session, graph: ChatGraph) -> St
                 RECORD_RUN_KEY: record_run,
                 RECORD_SAFETY_KEY: record_safety,
                 BUDGET_KEY: budget_exhausted,
+                LOCAL_ONLY_KEY: _privacy_mode(),
             }
         }
 

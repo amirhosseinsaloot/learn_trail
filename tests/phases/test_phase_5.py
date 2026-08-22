@@ -61,6 +61,7 @@ def test_phase_5_exit_criterion() -> None:
         PERSIST_KEY,
         RECORD_RUN_KEY,
         ChatState,
+        GraphError,
         build_chat_graph,
     )
     from ai_core.models.gateway import GatewayError
@@ -141,10 +142,12 @@ def test_phase_5_exit_criterion() -> None:
             with capture_spans() as spans, span(CHAT_REQUEST):
                 try:
                     asyncio.run(go())
-                except GatewayError:
+                except (GatewayError, GraphError):
                     # Expected on the failing path, and caught here for the same
                     # reason the SSE handler catches it: the request ended, the
-                    # spans are the record of how.
+                    # spans are the record of how. Routing (Phase 10) wraps the
+                    # underlying GatewayError in a GraphError before it escapes,
+                    # so both are tolerated.
                     if not failing:
                         raise
         finally:

@@ -1,0 +1,21 @@
+{
+  "cloud": {
+    "alias": "learning-fast",
+    "avg_coverage": 0.625,
+    "avg_latency_ms": 3074.3,
+    "cases": 4,
+    "served": true,
+    "total_cost_usd": 0.000572
+  },
+  "local": {
+    "alias": "learning-local",
+    "avg_coverage": 0.375,
+    "avg_latency_ms": 1298.6,
+    "cases": 4,
+    "served": true,
+    "total_cost_usd": 0.0
+  },
+  "notes": [
+    "local was faster on average; local cost $0.0000 against cloud $0.0006; coverage 0.38 local vs 0.62 cloud."
+  ]
+}

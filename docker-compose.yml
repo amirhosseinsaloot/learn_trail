@@ -252,6 +252,14 @@ services:
       # proxy's own management routes, not a provider; a real value belongs in
       # .env. It is deliberately obvious rather than plausible.
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-local-dev-change-me}
+      # Where the `learning-local` alias finds Ollama (Phase 11). Defaults to the
+      # `ollama` compose service below; override to
+      # http://host.docker.internal:11434/v1 to use an Ollama running on the host
+      # instead — which is the path the benchmark uses, and why `extra_hosts`
+      # maps that name to the host gateway.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434/v1}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       # Read-only: the gateway must never rewrite its own alias definitions.
       - ./infra/litellm/config.yaml:/app/config.yaml:ro
@@ -318,6 +326,53 @@ services:
       retries: 6
     restart: unless-stopped
 
+  # ---------------------------------------------------------------------------
+  # Ollama — a locally-served model (Phase 11, docs/SPEC.md §15).
+  #
+  # PROFILE-GATED. It does not start with `make up`: pulling a model is gigabytes
+  # and running one wants a GPU or patience, neither of which the default four-
+  # service dev loop should require. Start it with
+  #   docker compose --profile local up -d ollama
+  # and pull a model into its volume with
+  #   docker compose exec ollama ollama pull llama3.2:1b
+  #
+  # The `learning-local` alias in infra/litellm/config.yaml points here by
+  # default. On a machine that already runs Ollama on the host, skip this service
+  # entirely and set OLLAMA_BASE_URL=http://host.docker.internal:11434/v1 — the
+  # alias does not care which it reaches, which is the whole point of an alias.
+  #
+  # GPU is commented rather than required: it needs the nvidia container runtime,
+  # which not every host has, and llama3.2:1b runs on CPU (slowly). Uncomment the
+  # `deploy` block on a machine with the runtime installed.
+  # ---------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:0.12.6
+    profiles: ["local"]
+    ports:
+      # Loopback only, like every other service that would otherwise expose a
+      # money- or compute-spending endpoint to the local network.
+      - "127.0.0.1:11434:11434"
+    volumes:
+      # Named volume so a pulled model survives `docker compose down` (models are
+      # large; re-pulling on every restart would make the service unusable).
+      - ollama_models:/root/.ollama
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    healthcheck:
+      # Ollama serves its own tag list; a 200 means the server is up. `curl` is
+      # not in the image, so use the shell's /dev/tcp probe.
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 6
+    restart: unless-stopped
+
 volumes:
   # Named, so `docker compose down` (without -v) keeps the database and
   # `docker compose down -v` is the explicit "throw the data away" gesture.
@@ -326,3 +381,6 @@ volumes:
   # of what the system did, and losing them on a routine `down` would make the
   # observability backend useless the moment you most want it.
   phoenix_data:
+  # Pulled Ollama models (Phase 11). Named for the same reason as the others:
+  # `down -v` is the explicit throw-it-away, a plain `down` keeps the gigabytes.
+  ollama_models:

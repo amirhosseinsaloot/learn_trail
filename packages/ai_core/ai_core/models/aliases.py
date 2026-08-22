@@ -34,3 +34,10 @@ class ModelAlias(StrEnum):
     #: LLM-as-judge for the safety pipeline (Phase 4) and evaluations (Phase 6).
     #: Runs on every request in those phases, so its cost multiplies by traffic.
     SAFETY_JUDGE = "safety-judge"
+
+    #: A locally-served model (Phase 11), for privacy/offline mode. Which model,
+    #: and whether it runs in a compose service or on the host, is entirely a
+    #: deployment decision in infra/litellm/config.yaml — application code that
+    #: forces this alias never learns it is local, only that it is the role for
+    #: "answer without leaving this machine".
+    LEARNING_LOCAL = "learning-local"

@@ -96,3 +96,28 @@ def test_the_fast_model_has_no_fallback() -> None:
 def test_the_judge_alias_has_no_fallback() -> None:
     """`safety-judge` is not an answer model; falling it back would be meaningless."""
     assert fallback_for(ModelAlias.SAFETY_JUDGE) is None
+
+
+# --- privacy / offline mode (Phase 11) -----------------------------------------
+
+
+def test_privacy_mode_forces_the_local_model() -> None:
+    """Every request goes local, whatever its difficulty."""
+    for question in ("define an index", "why is this a deep architectural trade-off?"):
+        difficulty, alias = route(question, local_only=True)
+        assert alias is ModelAlias.LEARNING_LOCAL
+        # Difficulty is still assessed and reported, only the alias is forced.
+        assert difficulty in (Difficulty.SIMPLE, Difficulty.DIFFICULT)
+
+
+def test_privacy_mode_wins_over_budget() -> None:
+    """Both flags set: local still wins. "No cloud call" is a guarantee, not a
+    preference to be traded against cost."""
+    _, alias = route("why?", budget_exhausted=True, local_only=True)
+    assert alias is ModelAlias.LEARNING_LOCAL
+
+
+def test_the_local_model_never_falls_back_to_cloud() -> None:
+    """The property that makes privacy mode trustworthy: a local failure surfaces
+    as an error rather than silently leaking the request to a cloud alias."""
+    assert fallback_for(ModelAlias.LEARNING_LOCAL) is None

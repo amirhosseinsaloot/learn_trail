@@ -131,17 +131,30 @@ def classify_difficulty(question: str) -> Difficulty:
     return Difficulty.SIMPLE
 
 
-def route(question: str, *, budget_exhausted: bool = False) -> tuple[Difficulty, ModelAlias]:
+def route(
+    question: str, *, budget_exhausted: bool = False, local_only: bool = False
+) -> tuple[Difficulty, ModelAlias]:
     """The routing decision: difficulty, and the alias it maps to.
 
-    `budget_exhausted` forces the cheap path regardless of difficulty. Cost-aware
-    routing rather than a hard refusal: a user over their spend window should get
-    a degraded answer, not an error — the strong model is a quality upgrade, not
-    a requirement, so dropping to the fast one is the graceful response. The
-    difficulty is still *reported* as it was assessed, so a trace shows a hard
-    question was answered cheaply and why.
+    `local_only` is privacy/offline mode (Phase 11): every request goes to the
+    locally-served model and nothing leaves the machine. It wins over everything
+    else, including difficulty and budget, because it is a *guarantee* — "no cloud
+    call" is not a preference to be traded against answer quality. The difficulty
+    is still reported as assessed, so a trace shows what was asked of the local
+    model even though the alias was forced.
+
+    Crucially, `learning-local` has no entry in `FALLBACK`. So a local model that
+    times out or errors surfaces as an error rather than quietly falling back to a
+    cloud alias — in privacy mode, failing is correct and leaking is not.
+
+    `budget_exhausted` forces the cheap *cloud* path regardless of difficulty.
+    Cost-aware routing rather than a hard refusal: the strong model is a quality
+    upgrade, not a requirement, so dropping to the fast one is the graceful
+    response when a spend window is used up.
     """
     difficulty = classify_difficulty(question)
+    if local_only:
+        return difficulty, ModelAlias.LEARNING_LOCAL
     if budget_exhausted:
         return difficulty, ModelAlias.LEARNING_FAST
     return difficulty, ALIAS_FOR[difficulty]

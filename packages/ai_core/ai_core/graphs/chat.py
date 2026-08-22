@@ -46,7 +46,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
-from opentelemetry.trace import Span
+from opentelemetry.trace import Span, Status, StatusCode
 from pydantic import BaseModel, Field
 
 from ai_core.graphs.messages import context_from_langchain
@@ -87,6 +87,13 @@ RECORD_SAFETY_KEY: Final = "record_safety"
 #: so the node that picks the alias and the node that sends the system message
 #: cannot end up reading different versions.
 ANSWER_PROMPT: Final = "learning_answer"
+
+#: Injected flag for privacy/offline mode (Phase 11). When True, `choose_model`
+#: routes to the local model and nothing leaves the machine. A plain bool, not a
+#: callable: it is a deployment mode set once, not a per-request judgement like
+#: the budget. Absent (falsy) by default — the graph is cloud-first unless told
+#: otherwise.
+LOCAL_ONLY_KEY: Final = "local_only"
 
 #: Injected check for whether this chat's spend window is exhausted (Phase 10).
 #: A callable, not a bool, so it is evaluated when routing runs rather than when
@@ -323,8 +330,9 @@ async def choose_model(state: ChatState, config: RunnableConfig) -> dict[str, An
     configurable: dict[str, Any] = config.get("configurable") or {}
     budget_check: BudgetExhausted | None = configurable.get(BUDGET_KEY)
     exhausted = await budget_check() if budget_check is not None else False
+    local_only = bool(configurable.get(LOCAL_ONLY_KEY, False))
 
-    difficulty, alias = route(question, budget_exhausted=exhausted)
+    difficulty, alias = route(question, budget_exhausted=exhausted, local_only=local_only)
     with span("choose_model") as active:
         set_attributes(
             active,
@@ -332,6 +340,7 @@ async def choose_model(state: ChatState, config: RunnableConfig) -> dict[str, An
                 Attr.MODEL_ALIAS: alias.value,
                 "learntrail.routing.difficulty": difficulty.value,
                 "learntrail.routing.budget_exhausted": exhausted,
+                "learntrail.routing.local_only": local_only,
             },
         )
     return {"alias": alias, "difficulty": difficulty}
@@ -456,16 +465,22 @@ async def generate_answer(state: ChatState, config: RunnableConfig) -> dict[str,
                 used_fallback = not is_primary
                 break
             except (TimeoutError, GatewayError) as exc:
+                # Mark *this* attempt's span failed, even when a fallback follows.
+                # Without the explicit status, a primary failure that fell back
+                # left an OK-looking span — a trace that hides the failure it
+                # exists to show. Found by the Phase 5 test after routing landed.
                 active.record_exception(exc)
+                active.set_status(Status(StatusCode.ERROR, str(exc)))
                 active.add_event("generation_failed", {Attr.MODEL_ALIAS: alias.value})
                 # A failure after anything streamed cannot be papered over with a
                 # fallback: the client has already seen tokens from a different
                 # model. Only a clean pre-stream failure may fall back.
                 is_last = index == len(attempts) - 1
                 if streamed or is_last:
-                    raise GraphError(
-                        f"{alias.value} failed to answer ({type(exc).__name__})"
-                    ) from exc
+                    # The original message is carried through, not just the type,
+                    # so the trace and the SSE `error` event say what actually
+                    # failed rather than only that something did.
+                    raise GraphError(f"{alias.value} failed to answer: {exc}") from exc
                 # else: loop to the fallback attempt.
 
     if answer is None:  # pragma: no cover - the loop either set it or raised

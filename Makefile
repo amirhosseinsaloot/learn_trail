@@ -162,7 +162,7 @@ evals-gate: ## Free, offline: is the current prompt/model config covered by a re
 # is for. Silently passing a mixed verdict would let a change that stopped more
 # attacks by refusing more ordinary questions merge on a green tick.
 # --------------------------------------------------------------------------
-.PHONY: redteam redteam-accept redteam-gate evals-retrieval optimize
+.PHONY: redteam redteam-accept redteam-gate evals-retrieval optimize benchmark
 
 redteam: ## Measure the safety posture and compare it against the recorded baseline
 	set -a; [ -f .env ] && . ./.env; set +a; \
@@ -181,6 +181,15 @@ optimize: ## Optimize the summary instruction and compare on held-out examples
 	uv sync --all-groups --extra optimize
 	set -a; [ -f .env ] && . ./.env; set +a; \
 		LITELLM_BASE_URL=$${LITELLM_BASE_URL:-http://localhost:4000} $(PY) -m evals optimize
+
+# Cloud-vs-local benchmark (Phase 11). Needs the gateway up and, for the local
+# side, an Ollama serving the model behind the `learning-local` alias — either the
+# `ollama` compose profile or a host Ollama with OLLAMA_BASE_URL pointed at it.
+# Records packages/evals/reports/benchmark.json; the cloud side stands even when
+# local is unreachable.
+benchmark: ## Cloud-vs-local latency/quality/cost benchmark
+	set -a; [ -f .env ] && . ./.env; set +a; \
+		LITELLM_BASE_URL=$${LITELLM_BASE_URL:-http://localhost:4000} $(PY) -m evals benchmark
 
 evals-retrieval: ## Score retrieval precision, recall and faithfulness
 	set -a; [ -f .env ] && . ./.env; set +a; \

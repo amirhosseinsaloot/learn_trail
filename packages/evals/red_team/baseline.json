@@ -30,6 +30,6 @@
   "controls": 7,
   "controls_refused": 0,
   "failures": [],
-  "measured_at": "2026-07-28T21:57:26+00:00",
-  "safety_fingerprint": "8851732ac4fb174f91c6453bb35336f279aa7ec4d521670f56f7d9a3421930f6"
+  "measured_at": "2026-08-22T00:53:35+00:00",
+  "safety_fingerprint": "e6b9604c331eaf4ca87dc554f6d781edcb7925c91be325ac983982cc67652127"
 }

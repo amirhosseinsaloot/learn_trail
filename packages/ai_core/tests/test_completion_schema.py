@@ -74,14 +74,41 @@ NO_USAGE: Any = _Payload(
 
 
 def test_alias_values_match_the_gateway_config() -> None:
-    """These strings are the join between the application and
-    infra/litellm/config.yaml. If one is edited in only one of the two places,
-    every call using it fails at runtime — so they are asserted as literals."""
-    assert {alias.value for alias in ModelAlias} == {
-        "learning-fast",
-        "learning-deep",
-        "safety-judge",
-    }
+    """Every alias the application can name must be registered in the gateway.
+
+    These strings are the join between application code and
+    infra/litellm/config.yaml: an enum member with no matching `model_name` fails
+    at runtime the first time it is used. Read from the config rather than
+    hardcoded — a hardcoded list is itself a thing that goes stale, and this one
+    had (it never included `learning-embedding`).
+
+    Two directions, both checked:
+
+    - every `ModelAlias` value is a registered `model_name` (no unresolvable
+      alias);
+    - every registered `model_name` is reachable by the application — as an enum
+      member, or as `EMBEDDING_ALIAS`, the one alias addressed by a string
+      constant rather than the enum (it is not an answer model, so it never flows
+      through `CompletionRequest`).
+    """
+    import pathlib
+
+    import yaml
+
+    from ai_core.retrieval.embedding import EMBEDDING_ALIAS
+
+    config_path = pathlib.Path(__file__).resolve().parents[3] / "infra/litellm/config.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    registered = {entry["model_name"] for entry in config["model_list"]}
+
+    enum_values = {alias.value for alias in ModelAlias}
+    unresolvable = enum_values - registered
+    assert unresolvable == set(), f"aliases not registered in the gateway: {sorted(unresolvable)}"
+
+    unreachable = registered - enum_values - {EMBEDDING_ALIAS}
+    assert unreachable == set(), (
+        f"model_names registered but not addressable by the application: {sorted(unreachable)}"
+    )
 
 
 def test_a_provider_model_string_is_not_a_valid_alias() -> None:

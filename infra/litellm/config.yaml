@@ -101,6 +101,30 @@ model_list:
       model: openai/text-embedding-3-small
       api_key: os.environ/OPENAI_API_KEY
 
+  # ---------------------------------------------------------------------------
+  # learning-local — a model served on this machine (Phase 11, docs/SPEC.md §15).
+  #
+  # This is the alias that makes "answer without an outbound call to a cloud
+  # provider" possible. It points at an OpenAI-compatible endpoint that is NOT a
+  # cloud host: Ollama, either the `ollama` compose service (the default below)
+  # or an Ollama running on the host — set OLLAMA_BASE_URL to
+  # http://host.docker.internal:11434/v1 for the latter, which is the path the
+  # Phase 11 benchmark uses.
+  #
+  # The api_key is the literal "ollama": Ollama ignores it, but the OpenAI SDK
+  # LiteLLM uses refuses to send a request with no key at all. It is not a
+  # credential and buys access to nothing — which is the point of a local model.
+  #
+  # model: openai/llama3.2:1b — small enough to run on a laptop GPU or CPU. The
+  # `openai/` prefix is LiteLLM's "this endpoint speaks the OpenAI wire format",
+  # not a statement that OpenAI serves it.
+  # ---------------------------------------------------------------------------
+  - model_name: learning-local
+    litellm_params:
+      model: openai/llama3.2:1b
+      api_base: os.environ/OLLAMA_BASE_URL
+      api_key: ollama
+
 litellm_settings:
   # Reject a request naming a parameter the target provider does not accept,
   # rather than silently discarding it. `drop_params: true` is the common default
