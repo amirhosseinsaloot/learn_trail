@@ -1,12 +1,50 @@
 # State
 
-Current phase: **Phase 9 is COMPLETE. Phase 10 — Model routing is next**
-(see [plans/phase-10.md](../plans/phase-10.md)); nothing in Phase 10 has been
-started.
+Current phase: **The roadmap is COMPLETE. All 13 phases (0-12) PASS.**
 
-`make status` reports **Phase 0 through 9 PASS**. Phases 10–12 are red, as
-designed. Both gates are green: the evaluation manifest and the red-team baseline
-each describe the current configuration.
+`make status` reports every phase green. Both merge gates are satisfied: the
+evaluation manifest and the red-team baseline each describe the current
+configuration. There is no "next phase" — docs/SPEC.md defines phases 0 through
+12 and every one is built, tested by its own executable exit criterion, and
+mutation-checked.
+
+## Phases 10-12, in brief
+
+**Phase 10 — model routing.** `choose_model` (a one-line rule since Phase 2) now
+classifies each question and routes simple ones to `learning-fast`, hard ones to
+`learning-deep`. `generate_answer` tries the routed alias under a timeout and
+falls back (`learning-deep -> learning-fast`) once if it hangs before streaming;
+a failure after tokens have shown surfaces as an error rather than a second
+model's answer overwriting the first. Cost-aware: a chat past its 24h ceiling
+drops to the cheap path. Verified live — the strong model cost 13x the cheap one
+at 2x the latency, shown on the `/models` dashboard.
+
+**Phase 11 — local models.** `learning-local` is a gateway alias pointing at
+Ollama, carrying no cloud credential; the `ollama` compose service ships
+profile-gated (the optional runtime, not one of the mandatory five). Privacy mode
+(`LEARNTRAIL_LOCAL_ONLY`) forces every request local and cannot leak, because the
+local alias has no fallback. Verified live on the GPU: a chat answered end to end
+by llama3.2:1b, no cloud call, and a recorded benchmark — local faster and free,
+cloud more complete.
+
+**Phase 12 — advanced features.** Flashcard generation from an approved Learning:
+typed generation, schema validation, endpoint, UI. Generated on demand, never
+stored — a study aid, not knowledge. Verified live: six valid cards from a real
+Learning.
+
+## Standing items, unchanged by the roadmap being done
+
+These predate the final phases and remain open — none blocks a phase, each is
+recorded where it lives:
+
+- **gitleaks is inert** (binary not installed; the hook skips loudly).
+- **No branch protection**, so both CI gates report without blocking a merge.
+- **No FAST CI lane** — lint/type/test run in git hooks only, not on GitHub.
+- **The plans name agents that were never created** (`safety-engineer`,
+  `eval-engineer`, `red-team`, `retrieval-engineer`, `prompt-optimizer`,
+  `prompt-librarian`); the work was done by the agents that exist.
+- **Privacy mode is not total**: chat routes local, but retrieval still embeds
+  through the cloud `learning-embedding` alias.
 
 ## Correction to the Phase 8 note that used to be here
 
