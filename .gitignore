@@ -37,3 +37,8 @@ next-env.d.ts
 # .graphifyignore). GRAPH_REPORT.md is regenerated the same way; if you want a
 # point-in-time copy reviewable in a PR, commit it explicitly with `git add -f`.
 graphify-out/
+
+# Claude Code per-machine settings (permissions granted locally, hooks with
+# machine-local absolute paths — see docs/STATE.md's Graphify note). Usually
+# covered by a developer's global git ignore; belt and braces, like .env above.
+.claude/settings.local.json
