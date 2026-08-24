@@ -58,3 +58,15 @@ make status
 Runs the per-phase exit-criterion tests in [tests/phases/](tests/phases/) (using
 `.venv/bin/python` when present) and prints git state. Status is derived by
 running code, never read from a markdown claim.
+
+## Claude Code tooling (optional)
+
+[graphify](https://github.com/jarkius-ai/graphify) builds a knowledge graph of
+this repo (`graphify-out/graph.json`, `GRAPH_REPORT.md`) that Claude Code uses to
+navigate the codebase — see [CLAUDE.md](CLAUDE.md)'s `## graphify` section for the
+rules it follows. Installed as isolated dev tooling (`uv tool install graphifyy`),
+not a `pyproject.toml` dependency. After changing code, refresh the graph:
+
+```bash
+make graphify-update
+```

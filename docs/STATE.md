@@ -430,6 +430,15 @@ purges its own chat on each run.
   not assumed).
 - **No CI.** Hooks and `make fast` are the only enforcement, and both are bypassable
   with `--no-verify`. The FAST CI lane moved to Phase 1.
+- **Graphify** — project-scoped Claude Code tooling, not a roadmap phase and not
+  gated by invariant #6 (it does not touch AI application code). `.claude/skills/graphify/`
+  (skill, project-scoped), `.claude/CLAUDE.md` (skill registration) and the
+  `## graphify` section appended to this repo's [CLAUDE.md](../CLAUDE.md) tell
+  Claude Code to query `graphify-out/graph.json` before broad codebase questions
+  and run `make graphify-update` after modifying code. `.graphifyignore` excludes
+  generated/dependency dirs and the tool's own bundled docs. The PreToolUse nudge
+  hook lives in the gitignored `.claude/settings.local.json`, not the committed
+  `.claude/settings.json` — its command embeds a machine-local absolute path.
 
 ---
 

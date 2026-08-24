@@ -52,7 +52,7 @@ PHASE_TITLES := \
 # (`docker compose`, v2+) is stated once rather than in five recipes.
 COMPOSE := docker compose
 
-.PHONY: status help lint-py type-py lint-web type-web test fast hooks up down logs ps
+.PHONY: status help lint-py type-py lint-web type-web test fast hooks graphify-update up down logs ps
 
 # Single command that answers "where am I": per-phase exit-criterion test
 # results, then recent git history and working-tree state. Status is derived
@@ -211,6 +211,11 @@ fast: lint-py type-py test lint-web type-web ## Every Phase 0 check, in one comm
 
 hooks: ## (Re)install the git hooks defined in lefthook.yml
 	$(LEFTHOOK) install
+
+# Graphify (dev/Claude tooling, not part of the AI application — see CLAUDE.md's
+# "## graphify" section and docs/STATE.md). AST-only: no LLM call, no API cost.
+graphify-update: ## Re-extract changed code and refresh the graphify knowledge graph
+	graphify update .
 
 # ---------------------------------------------------------------------------
 # Local development stack (docker-compose.yml, docs/SPEC.md §6).
