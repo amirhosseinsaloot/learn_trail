@@ -39,6 +39,25 @@ export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost
 export const PHOENIX_URL = process.env.NEXT_PUBLIC_PHOENIX_URL ?? "http://localhost:6006";
 
 /**
+ * The project a trace link points into, as Phoenix's own id for it.
+ *
+ * Not the project *name*. Phoenix routes `/projects/:id` by GraphQL global id — a
+ * base64 `Project:<row>` — and resolves it with a `node(id:)` lookup, so a name in
+ * that position fails with `Unknown node: default` and an error page rather than a
+ * 404. The default below is base64 `Project:1`: the `default` project Phoenix
+ * creates on first start, which is where every span this app exports lands.
+ *
+ * Configurable because the id is Phoenix's row id, not a constant of the product.
+ * If it ever moves, `GET ${PHOENIX_URL}/v1/projects` lists every project with its
+ * id and name — that is the value this variable takes.
+ *
+ * Resolved from configuration rather than looked up at render time on purpose:
+ * Phoenix serves no CORS headers, so the browser cannot call its API from this
+ * origin at all. The lookup would fail in a way that only shows up in a console.
+ */
+export const PHOENIX_PROJECT_ID = process.env.NEXT_PUBLIC_PHOENIX_PROJECT_ID ?? "UHJvamVjdDox";
+
+/**
  * A deep link to one trace.
  *
  * The single place in the frontend that knows the trace backend's URL shape.
@@ -48,7 +67,7 @@ export const PHOENIX_URL = process.env.NEXT_PUBLIC_PHOENIX_URL ?? "http://localh
  * one-function edit rather than a search.
  */
 export function traceUrl(traceId: string): string {
-  return `${PHOENIX_URL}/projects/default/traces/${traceId}`;
+  return `${PHOENIX_URL}/projects/${PHOENIX_PROJECT_ID}/traces/${traceId}`;
 }
 
 export const api = createClient<import("./schema.gen").paths>({ baseUrl: API_BASE_URL });

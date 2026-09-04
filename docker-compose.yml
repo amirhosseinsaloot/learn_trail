@@ -188,6 +188,12 @@ services:
       # page and resolved by the user's browser, which is not on this network.
       # A URL, not a credential — nothing here weakens CLAUDE.md invariant #3.
       NEXT_PUBLIC_PHOENIX_URL: http://localhost:6006
+      # Which project those links open. Phoenix's URL takes a GraphQL global id
+      # (base64 `Project:<row>`), not the project's name — a name there renders
+      # its error page, not a 404. This is the `default` project every span from
+      # this stack lands in; `GET http://localhost:6006/v1/projects` prints the
+      # id of any other.
+      NEXT_PUBLIC_PHOENIX_PROJECT_ID: UHJvamVjdDox
       # Poll for file changes: inotify events do not cross a Docker bind mount
       # reliably on every host (notably Windows/macOS), and a dev server that
       # silently stops hot-reloading is worse than a little polling CPU.

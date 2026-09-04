@@ -34,6 +34,17 @@ Learning.
 
 ## After the roadmap
 
+**Phoenix trace links (2026-09-04).** The `trace ↗` link on every assistant
+turn opened Phoenix's error page: `Unknown node: default`. The link was built as
+`/projects/default/traces/<id>`, but Phoenix routes that segment by GraphQL global
+id (base64 `Project:<row>`) and resolves it with `node(id:)`, so the project's
+*name* is not a valid value there — and a bad node is an error page, not a 404.
+The id is now configuration (`NEXT_PUBLIC_PHOENIX_PROJECT_ID`, default
+`UHJvamVjdDox` = `Project:1`, set in compose) rather than looked up in the browser,
+because Phoenix serves no CORS headers and a fetch from the web origin cannot
+reach its API at all. Verified against the running instance: the deep link's own
+query, `node(id:"UHJvamVjdDox") { trace(traceId: …) }`, resolves.
+
 **Chat titles (2026-09-04).** Every conversation showed as `Untitled` forever.
 Not a regression: docs/SPEC.md §6 lists "Generating titles" and §12 names a
 `chat_title` prompt, and no phase plan ever picked either up — so nothing wrote
