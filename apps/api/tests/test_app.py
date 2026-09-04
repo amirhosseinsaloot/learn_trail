@@ -26,6 +26,11 @@ CHAT_OPERATIONS = {
     "/chats/{chat_id}": ["delete", "get", "patch"],
     "/chats/{chat_id}/restore": ["post"],
     "/chats/{chat_id}/messages": ["post"],
+    # "Generating titles" (docs/SPEC.md §6). Its own endpoint rather than
+    # something `POST /chats/{id}/messages` does on the side: it is a model call,
+    # so it fails in ways appending a message must not, and a chat can be titled
+    # again later without re-sending a question.
+    "/chats/{chat_id}/title": ["post"],
     # Sending a message and streaming the answer are separate endpoints, as
     # docs/SPEC.md §6 lists them.
     "/chats/{chat_id}/answer": ["post"],

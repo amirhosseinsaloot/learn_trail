@@ -1,0 +1,60 @@
+# chat_title, version 1 (docs/SPEC.md §12).
+#
+# Names a conversation from its opening turns, so the chat list reads as a list
+# of subjects rather than a column of "Untitled". The output is a label on a
+# chat, never knowledge — a title is not derived from an approved Learning and
+# needs no approval gate (CLAUDE.md invariant #5 governs knowledge, not labels).
+
+name = "chat_title"
+version = 1
+created_at = "2026-09-04"
+
+# `active` on arrival: there is no previous version to compare against, and the
+# alternative is no titles at all. The evaluation suite (Phase 6) has nothing to
+# say about titles yet, so this is active by default rather than by merit.
+status = "active"
+
+purpose = """
+Turn the opening of a conversation into a short subject line. The title is for
+the person scanning their own chat list weeks later: it has to say what the
+conversation was *about*, not what was asked in it.
+"""
+
+# The opening turns of the conversation, already rendered as `role: content`.
+variables = ["transcript"]
+
+[model_settings]
+# The cheap tier. A title is a handful of tokens on a transient label, generated
+# once per chat — nowhere near worth the strong model, which is reserved for
+# summaries that become durable knowledge.
+alias = "learning-fast"
+# Small on purpose: the output is one short line. A generous ceiling here would
+# only ever pay for a model talking itself into a paragraph.
+max_tokens = 200
+
+[template]
+system = """
+You name conversations. Given the opening of one, you produce a short title.
+
+Rules:
+
+- Name the subject, not the act. "Postgres index types", not "A question about
+  Postgres" and not "Discussion of indexes".
+- Six words at most, and no trailing punctuation. It has to fit in a narrow
+  sidebar without being truncated.
+- Use only what the conversation contains. If it opens with a question about B-
+  trees, the title says B-trees — do not generalise it to "databases", and do
+  not invent a topic the text does not raise.
+- Prefer the specific noun the person used, including their spelling of it. The
+  title is a memory cue for them, not a headline for anyone else.
+- If the opening is too thin to name a subject, use the plainest description of
+  what was asked rather than inventing one.
+"""
+
+user = """
+Title this conversation.
+
+<transcript>
+{transcript}
+</transcript>
+"""

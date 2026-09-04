@@ -30,9 +30,11 @@ from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ai_core.agents.titler import TitleGenerationError
 from ai_core.graphs.chat import build_chat_graph
 from ai_core.safety.decisions import SafetyAction, SafetyDecision, SafetyOutcome, SafetyStage
 from api.main import app
+from api.routers import chats as chats_router
 from database.models import Message, ModelRun, SafetyEvent
 from database.session import engine, session
 
@@ -907,3 +909,129 @@ async def test_an_unpriced_model_records_no_cost_rather_than_zero(
 
     run = next(r for r in await _stub_runs(db) if r.operation == "chat.answer")
     assert run.estimated_cost is None
+
+
+# --- generating titles ----------------------------------------------------------
+#
+# The model is stubbed at the router's own reference to `generate_title`: what
+# these assert is the endpoint's policy — when it titles, when it refuses, and
+# what it sends — not that a model can name a conversation.
+
+
+def _stub_title(monkeypatch: pytest.MonkeyPatch, title: str = "Postgres index types") -> list[str]:
+    """Replace title generation and capture what it was asked to title."""
+    seen: list[str] = []
+
+    async def fake_generate_title(transcript: str) -> str:
+        seen.append(transcript)
+        return title
+
+    monkeypatch.setattr(chats_router, "generate_title", fake_generate_title)
+    return seen
+
+
+async def test_titles_an_untitled_chat_from_its_conversation(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = _stub_title(monkeypatch)
+    chat = await _new_chat(client, None)
+    await client.post(f"/chats/{chat['id']}/messages", json={"content": "what is an index?"})
+
+    response = await client.post(f"/chats/{chat['id']}/title")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["title"] == "Postgres index types"
+    # Roles are in the prompt text: the model has to be able to tell the question
+    # from the answer.
+    assert seen == ["user: what is an index?"]
+    # Persisted, not just returned — the sidebar reads the list endpoint.
+    listed = (await client.get("/chats")).json()
+    assert next(c for c in listed if c["id"] == chat["id"])["title"] == "Postgres index types"
+
+
+async def test_titling_never_overwrites_an_existing_title(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The endpoint is called unconditionally after an answer, so this is what
+    stops a background retitle from discarding a name chosen by hand."""
+    seen = _stub_title(monkeypatch)
+    chat = await _new_chat(client, "Named by hand")
+    await client.post(f"/chats/{chat['id']}/messages", json={"content": "what is an index?"})
+
+    response = await client.post(f"/chats/{chat['id']}/title")
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "Named by hand"
+    # Not merely unchanged: the model was never called, so a repeated call from
+    # the client costs nothing.
+    assert seen == []
+
+
+async def test_only_the_opening_turns_are_sent_for_titling(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A title names what a conversation opened on; later turns wander."""
+    seen = _stub_title(monkeypatch)
+    chat = await _new_chat(client, None)
+    for i in range(chats_router.TITLE_CONTEXT_TURNS + 2):
+        await client.post(f"/chats/{chat['id']}/messages", json={"content": f"question {i}"})
+
+    await client.post(f"/chats/{chat['id']}/title")
+
+    assert len(seen[0].splitlines()) == chats_router.TITLE_CONTEXT_TURNS
+    assert "question 0" in seen[0]
+    assert f"question {chats_router.TITLE_CONTEXT_TURNS}" not in seen[0]
+
+
+async def test_refuses_to_title_a_chat_with_no_messages(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """409, not a title invented from nothing."""
+    seen = _stub_title(monkeypatch)
+    chat = await _new_chat(client, None)
+
+    response = await client.post(f"/chats/{chat['id']}/title")
+
+    assert response.status_code == 409
+    assert seen == []
+
+
+async def test_refuses_to_title_a_deleted_chat(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stub_title(monkeypatch)
+    chat = await _new_chat(client, None)
+    await client.post(f"/chats/{chat['id']}/messages", json={"content": "what is an index?"})
+    await client.delete(f"/chats/{chat['id']}")
+
+    response = await client.post(f"/chats/{chat['id']}/title")
+
+    assert response.status_code == 409
+
+
+async def test_titling_an_unknown_chat_is_a_404(client: AsyncClient) -> None:
+    response = await client.post(f"/chats/{uuid.uuid4()}/title")
+    assert response.status_code == 404
+
+
+async def test_a_rejected_title_leaves_the_chat_untitled(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The model answered and the answer was rejected — a 422, and no title.
+
+    Deliberately not a fallback to the first message: an untitled chat is a state
+    the UI already renders, and a silent fallback would make a broken titling
+    model indistinguishable from a working one.
+    """
+
+    async def failing(transcript: str) -> str:
+        raise TitleGenerationError("chat_title@1: the model did not produce a valid title")
+
+    monkeypatch.setattr(chats_router, "generate_title", failing)
+    chat = await _new_chat(client, None)
+    await client.post(f"/chats/{chat['id']}/messages", json={"content": "what is an index?"})
+
+    response = await client.post(f"/chats/{chat['id']}/title")
+
+    assert response.status_code == 422
+    assert (await client.get(f"/chats/{chat['id']}")).json()["title"] is None

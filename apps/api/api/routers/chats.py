@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload
 
 from ai_core import ChatTurn, CompletionResponse, GatewayError, ModelAlias
+from ai_core.agents.titler import TitleGenerationError, generate_title
 from ai_core.graphs.chat import (
     BUDGET_KEY,
     LOCAL_ONLY_KEY,
@@ -67,6 +68,19 @@ CHAT_SPEND_CEILING_USD: Final = Decimal("0.50")
 
 #: The window the ceiling applies over.
 SPEND_WINDOW = timedelta(hours=24)
+
+#: How much of a conversation is sent to the titling model.
+#:
+#: A title names what a conversation is *about*, and that is settled by its
+#: opening exchange — later turns wander. Sending the whole transcript would pay
+#: more per title for a worse one, and would make the title drift every time it
+#: was regenerated.
+TITLE_CONTEXT_TURNS: Final = 4
+
+#: Per-turn cap on what goes into that context. A pasted stack trace as the first
+#: question is still one turn, and none of it after the first few lines helps name
+#: the conversation.
+TITLE_CONTEXT_CHARS: Final = 2000
 
 
 def _privacy_mode() -> bool:
@@ -204,6 +218,63 @@ async def rename_chat(chat_id: uuid.UUID, body: ChatRename, db: Session) -> Chat
     """Rename a chat."""
     chat = await _load_chat(db, chat_id)
     chat.title = body.title
+    return ChatRead.model_validate(await _commit_mutation(db, chat))
+
+
+def _title_context(chat: Chat) -> str:
+    """Render the opening of a conversation as prompt text.
+
+    `role: content` per line, the same shape the summary graph builds its context
+    in — the titling model has to be able to tell a question from an answer, and
+    the roles are what carry that.
+    """
+    return "\n".join(
+        f"{message.role.value}: {message.content[:TITLE_CONTEXT_CHARS]}"
+        for message in chat.messages[:TITLE_CONTEXT_TURNS]
+    )
+
+
+@router.post("/{chat_id}/title")
+async def generate_chat_title(chat_id: uuid.UUID, db: Session) -> ChatRead:
+    """Name an untitled chat from its opening turns (docs/SPEC.md §6).
+
+    The missing half of "a chat is created before it has a title". Without this
+    endpoint nothing ever writes `chat.title` except a manual rename, so every
+    conversation stays `Untitled` in the sidebar forever.
+
+    **Never overwrites an existing title.** A chat that already has one is
+    returned unchanged, with a 200 — which makes the endpoint safe to call
+    unconditionally after the first answer, and makes it impossible for a
+    background retitle to discard a name the user chose by hand. Renaming is
+    `PATCH /chats/{id}`, and that is the only thing that replaces a title.
+    """
+    chat = await _load_chat(db, chat_id)
+    if chat.status is ChatStatus.DELETED:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"chat {chat_id} is deleted; restore it before titling it",
+        )
+    if chat.title is not None:
+        return ChatRead.model_validate(chat)
+    if not chat.messages:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"chat {chat_id} has no messages; a title is generated from the conversation",
+        )
+
+    with span("generate_chat_title", {Attr.CHAT_ID: str(chat.id)}):
+        try:
+            title = await generate_title(_title_context(chat))
+        except TitleGenerationError as exc:
+            # The model answered and what it produced was rejected — a 422, the
+            # same shape summary and flashcard generation use for a validation
+            # failure. The chat stays untitled, which is a state the UI already
+            # renders.
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        except GatewayError as exc:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+
+    chat.title = title
     return ChatRead.model_validate(await _commit_mutation(db, chat))
 
 

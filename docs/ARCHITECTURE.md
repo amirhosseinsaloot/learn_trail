@@ -204,6 +204,18 @@ writes a `learning_revision` so the history is auditable.
   validated set from one approved Learning, on demand and never stored — a study
   aid derived from knowledge, not knowledge itself, so it needs no approval gate.
 
+### One model path that reads no knowledge at all
+
+- **Chat titles.** `POST /chats/{id}/title` names an untitled chat from its
+  opening turns (docs/SPEC.md §6, "Generating titles"), through `chat_title@1`
+  on the cheap alias and the `ChatTitle` schema. Only the first few turns are
+  sent: a title names what a conversation opened on, and later turns wander. The
+  endpoint never overwrites an existing title, so calling it after every answer
+  cannot discard a name the user set by hand — `PATCH /chats/{id}` remains the
+  only thing that replaces one. Nothing is derived from a title, which is why it
+  carries no `prompt_version` and needs no approval gate: it is a label on a
+  conversation, not knowledge.
+
 ---
 
 ## 4. Process view — docker-compose
@@ -313,7 +325,8 @@ packages/
     retrieval/          chunking, embedding, hybrid search           Phase 8
   evals/                datasets, gate, judges, red_team, reports    Phase 6, 7, 9, 11
   database/             SQLAlchemy metadata + Alembic (10 tables)    built
-prompts/                learning_summary, learning_answer, flashcards built
+prompts/                learning_answer, learning_summary, flashcards,
+                        chat_title                                   built
 infra/
   docker/               Dockerfiles                                  built
   litellm/              gateway + alias config                       Phase 1
@@ -373,6 +386,8 @@ The working product, end to end:
 - Ask across approved Learnings and get an answer with citations to the exact
   chunks it used, or an honest "nothing covers that" (Phase 8).
 - Generate flashcards from a Learning (Phase 12).
+- Conversations name themselves once answered, so the chat list reads as a list
+  of subjects.
 - A local model can serve chat with no cloud call at all (Phase 11).
 
 The guardrails around all of it:

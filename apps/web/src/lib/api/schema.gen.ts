@@ -70,6 +70,36 @@ export interface paths {
         patch: operations["rename_chat_chats__chat_id__patch"];
         trace?: never;
     };
+    "/chats/{chat_id}/title": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Chat Title
+         * @description Name an untitled chat from its opening turns (docs/SPEC.md §6).
+         *
+         *     The missing half of "a chat is created before it has a title". Without this
+         *     endpoint nothing ever writes `chat.title` except a manual rename, so every
+         *     conversation stays `Untitled` in the sidebar forever.
+         *
+         *     **Never overwrites an existing title.** A chat that already has one is
+         *     returned unchanged, with a 200 — which makes the endpoint safe to call
+         *     unconditionally after the first answer, and makes it impossible for a
+         *     background retitle to discard a name the user chose by hand. Renaming is
+         *     `PATCH /chats/{id}`, and that is the only thing that replaces a title.
+         */
+        post: operations["generate_chat_title_chats__chat_id__title_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/chats/{chat_id}/restore": {
         parameters: {
             query?: never;
@@ -1116,6 +1146,37 @@ export interface operations {
                 "application/json": components["schemas"]["ChatRename"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_chat_title_chats__chat_id__title_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

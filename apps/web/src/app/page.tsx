@@ -141,6 +141,22 @@ export default function ChatPage() {
 
       setStreaming(null);
       if (result.status === "blocked") setBlocked(result.blocked);
+
+      // Name the conversation once it has actually been answered. Only after a
+      // real answer: a blocked turn has no assistant content, and titling a chat
+      // from a refused question would put the refused subject in the sidebar.
+      //
+      // The title is generated from the conversation rather than from the first
+      // message (docs/SPEC.md §6), and the endpoint refuses to overwrite an
+      // existing title — so calling it whenever the open chat looks untitled is
+      // safe even if this component's copy is stale. A failure here is left
+      // silent on purpose: the answer arrived, and a chat with no name yet is a
+      // state the sidebar already renders.
+      if (result.status === "done" && chat.title === null) {
+        await api.POST("/chats/{chat_id}/title", {
+          params: { path: { chat_id: chat.id } },
+        });
+      }
       // Re-read from the backend rather than appending the accumulated text
       // locally. The database is the source of truth, and re-reading is what
       // makes the screen show what was actually persisted rather than what

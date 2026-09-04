@@ -32,6 +32,20 @@ typed generation, schema validation, endpoint, UI. Generated on demand, never
 stored — a study aid, not knowledge. Verified live: six valid cards from a real
 Learning.
 
+## After the roadmap
+
+**Chat titles (2026-09-04).** Every conversation showed as `Untitled` forever.
+Not a regression: docs/SPEC.md §6 lists "Generating titles" and §12 names a
+`chat_title` prompt, and no phase plan ever picked either up — so nothing wrote
+`chat.title` except the manual `PATCH /chats/{id}` rename, which the web client
+never called. Closed with the piece that was missing: `prompts/chat_title/v1.toml`
+on `learning-fast`, `ai_core.agents.titler` (typed generation into a `ChatTitle`
+schema, like the flashcard agent), `POST /chats/{id}/title`, and a call from the
+chat page after the first answered turn. The endpoint refuses to overwrite an
+existing title, so it is safe to call unconditionally. Verified live: a real
+conversation about primary keys titled itself "Primary key vs unique index in
+Postgres".
+
 ## Standing items, unchanged by the roadmap being done
 
 These predate the final phases and remain open — none blocks a phase, each is
