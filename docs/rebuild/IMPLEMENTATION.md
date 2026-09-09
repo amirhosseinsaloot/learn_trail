@@ -744,7 +744,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** none.
 - **Reason:** implementer and reviewer separation must be mechanical before feature tickets start.
 - **Practices:** AGENTS.md entry file.
-- **Status:** in progress
+- **Status:** in review
 
 #### NU-049 Graphify: graph targets, post-commit refresh, agent guidance
 - **Phase:** 1 · **Context:** platform (agents area)
