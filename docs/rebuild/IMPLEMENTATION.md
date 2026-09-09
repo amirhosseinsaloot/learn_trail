@@ -1,6 +1,6 @@
 # Implementation Details Document
 
-Status: **Implementation-ready v1 baseline.**
+Status: **Phase 2 implementation-plan baseline.**
 
 Branch: `rebuild/v1`.
 Design authority: [Architecture Document](ARCHITECTURE.md).
@@ -8,16 +8,16 @@ Design authority: [Architecture Document](ARCHITECTURE.md).
 ## 1. Purpose
 
 Provide sufficiently explicit implementation instructions for smaller, cheaper
-AI models to execute the agreed design. The founder should make material product
-and architecture decisions; the implementation system should perform the coding,
+AI models to execute the agreed design. The product owner makes material product
+and architecture decisions; the implementation system performs coding,
 integration, and verification.
 
 FastAPI and React are selected under D-05. The v1 stack is Vite/React/TypeScript,
 FastAPI/Python, PostgreSQL/pgvector, SQLAlchemy/Alembic, and Compose services for
 web/API/database. Docker Compose distribution with operator-supplied model
 connections is selected under D-09, Google plus email/password login under D-10,
-and a public synthetic investor demo under D-11. Paid hosting and a mobile client
-are future directions under D-12. Implement tasks in the phases below without
+and a public synthetic sample deployment under D-11. Paid hosting and a mobile
+client are future directions under D-12. Implement tasks in the phases below without
 reopening these boundaries.
 
 ## 2. Reuse workflow
@@ -62,7 +62,7 @@ should be created to implement this planning workflow.
 
 ## 4. Approved implementation phases
 
-| Phase | Intended usable outcome | Candidate exit evidence |
+| Phase | Intended usable outcome | Exit evidence |
 | --- | --- | --- |
 | 0. Harness | Repository layout, Make commands, Compose dev services, CI skeleton | Clean checkout runs formatting, lint, typecheck, tests, and health check |
 | 1. Foundation | Multi-user installation, auth, migrations, ownership, baseline UI | Compose login works; data survives restart; cross-user access is rejected |
@@ -71,7 +71,7 @@ should be created to implement this planning workflow.
 | 4. Capture and review | Summary draft, edit, confirm, versioning, archive, reopen | Cancel does not save; confirmed content is indexed and linked to transcript |
 | 5. Knowledge questions | Summary-only vector retrieval and evidence-aware answers | Ownership, citations, partial/insufficient evidence, archive consistency pass |
 | 6. Release | Hardened Compose release, backups, upgrade path, security checks | Clean install, restart, upgrade, recovery, and journeys pass |
-| 7. Investor demo | Public static sample-data page sharing approved UI patterns | No secrets/model calls; simulated behavior is labeled and isolated |
+| 7. Sample deployment | Public static sample-data page sharing approved UI patterns | No secrets/model calls; simulated behavior is labeled and isolated |
 
 Split each phase into bounded tasks using the task contract above. Start a task
 only when its prerequisites and contracts are written here or in Architecture.
@@ -168,7 +168,7 @@ maintained sources of truth.
 registry, versioned release gates, migration order, and recovery before configuring
 the pipeline. Release images must come from the revision that passed required
 checks. Exercise the distributed Compose setup as well as the frontend/API
-contract and important user journeys. The required investor demo has its own
+ contract and important user journeys. The required sample deployment has its own
 delivery configuration, using the shared product source. Do not rely on an
 implementation agent's success report alone.
 
@@ -183,12 +183,11 @@ The final setup must document exact commands, environment needs, expected output
 failure recovery, and handoff evidence here so smaller implementation models can
 execute it without inventing missing architecture.
 
-### D-07 — Cost constraints after the self-hosting change
+### D-07 — Low-cost operating target
 
-Use the existing $10 monthly target to evaluate the founder-operated investor
-demo. Allocate that amount only after selecting its mode, hosting, and any real
-AI/search use. Do not implement a shared founder-funded budget for all local
-installations or hard-code $10 as every operator's allowance.
+Use the agreed low-cost monthly target to evaluate sample deployments, hosting,
+and any real AI/search use. Do not implement a shared funded budget for all local
+installations or hard-code one allowance for every operator.
 
 Keep resource controls configurable per installation: context/input size, output
 tokens, search iterations, retries, and concurrent generation. Define any monetary
@@ -264,17 +263,17 @@ session design, and recovery from Architecture. Acceptance checks
 must include invalid/expired sessions, incorrect credentials, OAuth mismatch,
 account-linking boundaries, and protected access under the selected owner model.
 
-### D-11 — Local application and investor demo
+### D-11 — Local application and sample deployment
 
-- Share the React components and learning contracts across the product and demo.
-  Use a static synthetic-fixture adapter for the public demo.
+- Share the React components and learning contracts across the product and sample
+  deployment. Use a static synthetic-fixture adapter for the public sample.
 - Keep the real local product connected to FastAPI and the operator's configured
   model services. A simulated demo is not acceptance evidence for live integration.
 - Label the sample demo clearly, use synthetic fixtures, and avoid credentials or
   paid provider calls. Keep its simulated state separate from the real backend.
-- Do not include the founder's private chats, knowledge, local configuration, or
+- Do not include private chats, knowledge, local configuration, or
   credentials in demo assets, builds, or seed data.
-- Release/demo artifacts must correspond to reviewed and tested product source.
+- Release/sample artifacts must correspond to reviewed and tested product source.
 
 Acceptance checks must verify source sharing, isolation from private data, no
 authorization bypass from browser-controlled demo flags, and no-network behavior.
@@ -318,8 +317,8 @@ merely to fill out this planning draft.
 
 ## 7. Design prototype prompt
 
-The founder used the following prompt and supplied
-[learntrail-v1-design.html](learntrail-v1-design.html). Retain the prompt as the
+The product owner used the following prompt and supplied
+[DESIGN.html](DESIGN.html). Retain the prompt as the
 design brief, with the current architecture decisions taking precedence where
 the brief describes earlier open choices. The artifact is a visual reference;
 its proposed behavior for gaps in knowledge answers remains pending. FastAPI and
@@ -330,13 +329,13 @@ need additional UX design within these documents.
 ```text
 Act as a senior product designer and frontend prototyping engineer. Create a polished, interactive design prototype for Nuroli.
 
-Produce an HTML artifact I can preview in Claude and download as one complete file named learntrail-v1-design.html. Build the prototype directly using the brief below. Make reasonable design choices and identify important assumptions in your short handoff.
+Produce an HTML artifact I can preview in Claude and download as one complete file named DESIGN.html. Build the prototype directly using the brief below. Make reasonable design choices and identify important assumptions in your short handoff.
 
 PRODUCT AND PURPOSE
 
 Nuroli supports how I learn: I ask AI models questions, investigate facts, have deep follow-up conversations, summarize useful conclusions, save that knowledge, and ask questions across it later.
 
-I am the primary user. The product will also let other individual consumers register and log in. It is intended for real use and my professional founder portfolio. Prioritize a thoughtful learning experience, strong visual craft, and clear interactions.
+The product supports individual users who register and log in. Prioritize a thoughtful learning experience, strong visual craft, and clear interactions.
 
 Design from this brief. The previous application's technology, screens, and navigation are not requirements. Production technology and architecture are still being discussed; this HTML prototype is a design reference.
 

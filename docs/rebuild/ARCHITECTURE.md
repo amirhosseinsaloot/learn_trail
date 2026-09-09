@@ -1,36 +1,30 @@
 # Architecture Document
 
-Status: **Implementation-ready v1 baseline.**
+Status: **Phase 1 architecture baseline.**
 
 Branch: `rebuild/v1`.
 
 ## 1. Purpose and user
 
-Nuroli supports the founder's way of learning: ask AI models questions,
-investigate facts, continue a deep discussion, summarize what was learned, retain
-that knowledge, and return to it later. The founder is the primary user. Other
-people should be able to install their own copy using Docker Compose and connect
-their own cloud or local model endpoints (D-09).
+Nuroli supports a focused learning workflow: ask AI models questions, investigate
+facts, continue a deep discussion, summarize what was learned, retain that
+knowledge, and return to it later. People should be able to install their own copy
+using Docker Compose and connect cloud or local model endpoints (D-09).
 
-The first release must demonstrate a useful product and polished UX as part of a
-professional founder portfolio. Shipping a working product at the lowest practical
-cost takes priority over architectural complexity. There are two initial delivery
-targets: the real local Docker Compose product and a demo page for investor
-presentations (D-11). Vercel remains the founder's initial hosting preference for
-the demo; its scope and hosting plan are not selected yet.
+Shipping a working product at the lowest practical cost takes priority over
+architectural complexity. The initial delivery targets are a usable local
+Docker Compose product and an optional sample-data deployment (D-11).
 
 The longer-term direction includes a hosted service where users can pay or top up
 their accounts and store learnings, plus a mobile client (D-12). These are future
 phases. The initial architecture should preserve a practical path to them.
 
 **Security remains a top priority** (D-08). Installation operators control their
-infrastructure and model accounts. Use the earlier US$10 monthly target as the
-planning ceiling for founder-operated demo infrastructure and usage unless the
-founder revises it. It is not a shared budget for other people's installations or
-a promised running cost for arbitrary models. Demo feasibility depends on its
-selected behavior and hosting plan.
+infrastructure and model accounts. Use the agreed low-cost operating target when
+evaluating hosted or sample-data deployments; it is not a promised running cost
+for arbitrary models or independent installations.
 
-The founder has selected **FastAPI for the backend** and **React for the frontend**
+The project uses **FastAPI for the backend** and **React for the frontend**
 (D-05). **Google sign-in and email/password** are the selected login methods
 (D-10). V1 defaults are Vite/React/TypeScript, FastAPI/Python, PostgreSQL with
 vector search support, and a three-service Docker Compose deployment (web, API,
@@ -48,14 +42,14 @@ and email/password. These defaults remain replaceable behind small interfaces.
    the first account is the installation administrator.
 5. **Installation and connections:** easy Docker Compose installation and
    user-configured OpenAI-compatible model connections.
-6. **Investor presentation:** a public synthetic demo page alongside the local
-   product; the Compose app is used for live presentations.
+6. **Sample deployment:** a public synthetic sample-data page may accompany the
+   local product without real credentials or paid model calls.
 
 Future scope: paid hosted accounts and a mobile application. Their implementation
 is not a first-release requirement.
 
-The founder currently consults several models and asks for verified facts.
-Chat will search the web when needed and show clickable sources (decision D-01).
+Users can ask for factual research; chat searches the web when needed and shows
+clickable sources (decision D-01).
 The user can choose the model for each reply within one shared conversation
 (decision D-02). A generated summary enters saved knowledge only after the user
 reviews or edits it and confirms saving (decision D-03). Knowledge questions
@@ -67,7 +61,7 @@ initial supported protocols/adapters and model capabilities have not been select
 
 - Define technology, architecture, and user flows from this new product brief.
   The old application's design is not a requirement.
-- The founder makes decisions; the implementation system handles the technical
+- The product owner makes decisions; the implementation system handles technical
   work, integration, and verification within the agreed design.
 - Reuse previous projects wherever suitable. Working interpretation: reuse
   compatible code, components, and setup after evaluating them against this
@@ -80,11 +74,10 @@ initial supported protocols/adapters and model capabilities have not been select
   the portfolio release.
 - Finalize the architecture and phases together before rebuilding application
   code. A proposal in either document is not an approved implementation task.
-- Maintain exactly two documents for the rebuild: this Architecture Document and
-  the [Implementation Details Document](IMPLEMENTATION_DETAILS.md). Product scope,
+- Maintain exactly three rebuild files: the design file, this Architecture
+  Document, and the [Implementation Document](IMPLEMENTATION.md). Product scope,
   UX flows, decision records, and system diagrams belong here. Detailed contracts,
   phases, tasks, and verification instructions belong in the implementation document.
-  The requested HTML prototype may accompany them as a visual design asset.
 - Previous project documentation is superseded for the rebuild. Carry applicable
   information into these two documents instead of requiring legacy plans as
   additional sources of truth. The current login requirements supersede older
@@ -99,8 +92,8 @@ Learning: sign in → start or resume a discussion → ask follow-up questions �
 summary → review and save knowledge → return to the library → ask a question
 across saved knowledge and open its supporting entries.
 
-Investor demo: open the demo page → explore the learning flow. Whether this uses
-clearly labeled sample responses or a restricted live backend is currently open.
+Sample deployment: open the sample-data page → explore the learning flow. It uses
+clearly labeled synthetic responses and no real credentials.
 
 Summary review/editing and explicit confirmation are agreed under D-03. The
 landing screen and navigation remain open. Knowledge questions search confirmed
@@ -116,11 +109,10 @@ Proposed UX criteria:
 
 ### Interactive design reference
 
-The founder requested a prompt for Claude to create an interactive HTML design
-artifact and a downloadable file. The self-contained prompt is stored in
-[Implementation Details, section 7](IMPLEMENTATION_DETAILS.md#7-design-prototype-prompt).
+The product owner requested an interactive HTML design artifact. The self-contained
+prompt is stored in [Implementation, section 7](IMPLEMENTATION.md#7-design-prototype-prompt).
 
-The founder supplied [learntrail-v1-design.html](learntrail-v1-design.html). Its
+The project includes [DESIGN.html](DESIGN.html). Its
 source and declared assumptions have been inspected; browser rendering and its
 embedded claims of verification have not been independently checked. It is a
 visual reference alongside the two written documents.
@@ -196,7 +188,7 @@ Candidate data flow:
 | UX | Supplied HTML is the visual reference; implement accessible core journeys |
 | Deployment and stack | Vite React TypeScript, FastAPI Python, PostgreSQL/pgvector, Compose web/API/db |
 | Installation access | Multi-user; first account is instance admin; admin can disable registration |
-| Investor demo | Public synthetic sample-data page; local app is used for live presentations |
+| Sample deployment | Public synthetic sample-data page with no credentials or paid model calls |
 | Cost controls | Per-install request, token, concurrency, and tool limits; unknown prices stay unknown |
 | Operations | Health checks, redacted logs, backup/restore instructions, migration checks |
 | Security | Secure HTTP-only sessions, Argon2id, OAuth state validation, ownership and CSRF checks |
@@ -212,7 +204,7 @@ separate decision files.
 
 ### D-01 — Search when needed and show clickable sources
 
-**Status:** agreed with the founder.
+**Status:** agreed product requirement.
 
 **Choice:** normal learning conversations can search the web when needed and
 must show clickable sources for answers that use web evidence.
@@ -235,7 +227,7 @@ This is feasibility research, not a selection of AI SDK or a provider.
 
 ### D-02 — Shared conversation with model choice for each reply
 
-**Status:** agreed with the founder.
+**Status:** agreed product requirement.
 
 **Choice:** keep one shared conversation and let the user select the model for
 each reply.
@@ -254,7 +246,7 @@ unavailable models return a retryable error.
 
 ### D-03 — Review a summary before saving knowledge
 
-**Status:** agreed with the founder.
+**Status:** agreed product requirement.
 
 **Choice:** generate a summary, let the user review or edit it, and save it as
 knowledge only when the user confirms.
@@ -272,7 +264,7 @@ confirmed version. Transcript retention and retrieval scope are settled by D-04.
 
 ### D-04 — Search confirmed summaries and keep conversations available
 
-**Status:** agreed with the founder.
+**Status:** agreed product requirement.
 
 **Choice:** knowledge questions search confirmed summaries only. Retain full
 conversations so the user can reopen them.
@@ -292,12 +284,12 @@ source conversation.
 
 ### D-05 — FastAPI backend and React frontend
 
-**Status:** selected by the founder.
+**Status:** selected product technology.
 
 **Choice:** use Python/FastAPI for the backend and React for the frontend.
 
-**Rationale:** the founder's technology preference for a practical, working
-portfolio release.
+**Rationale:** a practical, working product requires an explicit backend and
+frontend boundary.
 
 **Implementation implications:** define an explicit HTTP/streaming contract
 between the frontend and API. The backend owns authorization, persistence,
@@ -310,7 +302,7 @@ SQLAlchemy/Alembic, and SSE for streamed responses. Use `frontend/`, `backend/`,
 
 ### D-06 — Practical development setup independent of installed skills
 
-**Status:** requirements specified by the founder; concrete tooling pending.
+**Status:** requirements specified; concrete tooling pending.
 
 **Choice:** include a development harness, CI/CD, and multi-agent development
 workflows. The setup must be skills-agnostic and avoid overengineering.
@@ -325,26 +317,25 @@ isolated changes, review, and integration for multiple agents.
 migrations, and smoke checks. GitHub Actions runs the same gates; agents use
 isolated branches with one integrator and mandatory checks.
 
-### D-07 — $10 founder-operated service budget
+### D-07 — Low-cost operating target
 
-**Status:** amount agreed previously; scope now applied to investor-demo planning
-under D-11. Individual installations fund their own operation under D-09.
+**Status:** operating-cost constraint for deployment planning. Individual
+installations fund their own operation under D-09.
 
-Keep the existing US$10 monthly target for the founder's demo infrastructure and
-any live model/search use when evaluating demo options. The self-hosted version
-uses each operator's infrastructure and model connections; do not force a $10
-software limit on all installations. Keep their resource and spending controls
-configurable.
+Keep the agreed low-cost monthly target when evaluating sample deployments and
+model/search use. The self-hosted version uses each operator's infrastructure and
+model connections; do not force a shared software limit on all installations.
+Keep resource and spending controls configurable.
 
-**V1 resolution:** the investor page uses synthetic fixtures and no model calls;
-the local application is the live demonstration. Unknown provider prices remain
+**V1 resolution:** a sample page uses synthetic fixtures and no model calls;
+the local application remains the complete live product. Unknown provider prices remain
 unknown and never become zero silently.
 Ordinary tests should continue to run without paid model or search calls. The
 budget is a planning limit, not a guarantee that unbounded use is affordable.
 
 ### D-08 — Security as a top priority
 
-**Status:** priority specified by the founder. Detailed controls will be completed
+**Status:** security priority specified for the product. Detailed controls will be completed
 with the hosting, authentication, data, and development decisions.
 
 **Choice:** protect accounts, private conversations and summaries, configured
@@ -385,14 +376,14 @@ certification or a reason to introduce additional paid security services by defa
 
 ### D-09 — Self-hosted Docker Compose release with user model connections
 
-**Status:** selected by the founder as the primary product distribution. A separate
-investor demo is required under D-11; paid hosting is a future direction under D-12.
+**Status:** selected as the primary product distribution. A separate sample
+deployment is defined under D-11; paid hosting is a future direction under D-12.
 
 **Choice:** people install Nuroli easily through Docker Compose and connect
 their own models.
 
-**Rationale:** make the product useful independently of a founder-operated service
-and let operators choose their model providers or local runtimes.
+**Rationale:** make the product useful independently of a central service and let
+operators choose their model providers or local runtimes.
 
 **Implementation implications:** define a small production Compose deployment,
 persistent data, a short setup path, versioned releases, and install/upgrade checks.
@@ -409,7 +400,7 @@ operator-managed HTTPS reverse proxy.
 
 ### D-10 — Google sign-in and email/password
 
-**Status:** selected by the founder in the latest authentication choice.
+**Status:** selected product requirement.
 
 **Choice:** support Google sign-in and email/password for the self-hosted version.
 
@@ -430,27 +421,26 @@ Sessions are secure HTTP-only cookies with CSRF protection. Email verification a
 password recovery activate when SMTP is configured; local installs may disable
 those flows explicitly.
 
-### D-11 — Local product plus investor demo
+### D-11 — Local product plus sample deployment
 
 **Status:** selected for v1.
 
-**Choice:** people run the real product locally; the founder also has a demo page
-for presenting the product to investors.
+**Choice:** people run the real product locally; a public sample-data page may
+present the product behavior without real credentials or paid calls.
 
-**Rationale:** support practical use and give the founder an accessible product
-showcase.
+**Rationale:** support practical use while keeping a safe, low-cost demonstration
+surface separate from user data and credentials.
 
 **Implementation:** share product UI/components and learning contracts. The public
-demo clearly identifies simulated behavior, uses synthetic fixtures, and needs no
-credentials or paid calls. The Compose app is used for live demonstrations and
-never exposes the founder's private local knowledge.
+sample clearly identifies simulated behavior, uses synthetic fixtures, and needs
+no credentials or paid calls. It never exposes private local knowledge.
 
-The demo has no client-controlled authorization bypass; a future restricted live
-demo can reuse the API with server-enforced access and budgets.
+The sample has no client-controlled authorization bypass. A future restricted
+deployment can reuse the API with server-enforced access and budgets.
 
 ### D-12 — Future paid hosting and mobile client
 
-**Status:** longer-term direction stated by the founder; future implementation.
+**Status:** longer-term product direction; future implementation.
 
 **Intent:** eventually offer hosted accounts where users can pay or add credit and
 store learnings, and build a mobile application.
