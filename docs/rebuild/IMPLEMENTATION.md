@@ -702,7 +702,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** locked versions; proxy configuration for NU-010.
 - **Reason:** same gate for frontend before any screen exists.
 - **Practices:** WCAG (lint rules only at this stage).
-- **Status:** not started
+- **Status:** in progress
 
 #### NU-004 Pre-commit, gitleaks, and the pull-request workflow skeleton
 - **Phase:** 1 · **Context:** platform
