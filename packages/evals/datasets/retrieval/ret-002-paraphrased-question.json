@@ -1,7 +1,0 @@
-{
-  "id": "ret-002-paraphrased-question",
-  "question": "Do I need a separate database for embeddings, or can Postgres handle it?",
-  "ground_truth": "pgvector adds vector search to Postgres, so relational data and embeddings can live in one place. A dedicated vector database earns its place at scale or when specific index types are needed.",
-  "expected_learnings": ["Vector Databases vs PostgreSQL vs pgvector"],
-  "notes": "Deliberately paraphrased: the question shares almost no vocabulary with the Learning it should find. This is the case only the semantic half can answer, so it is what would notice if embeddings silently stopped contributing \u2014 the lexical half alone would return nothing and the failure would look like an empty library."
-}

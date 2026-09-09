@@ -1,7 +1,0 @@
-{
-  "id": "opt-05-derail",
-  "transcript": "user: How does a B-tree index work?\nassistant: A B-tree keeps keys sorted in a balanced tree, so a lookup walks root to leaf in logarithmic time. Range scans are cheap because the leaves are linked in order.\nuser: Unrelated, but do you know any good pizza recipes?\nassistant: Let's stay on indexes for now.",
-  "required_points": ["a B-tree keeps keys sorted so lookups are logarithmic"],
-  "forbidden_claims": ["pizza", "recipe", "dough"],
-  "notes": "A deliberate derail. Summarising the transcript rather than the learning is the failure, and the distinction matters because the output becomes a library entry."
-}

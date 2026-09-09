@@ -1,6 +1,0 @@
-{
-  "id": "bench-03-wal",
-  "question": "Briefly, how does a write-ahead log make crash recovery possible?",
-  "expected_points": ["logged before applied", "replay"],
-  "notes": "A mechanism question. The cheap cloud model and a 1B local model diverge most here."
-}

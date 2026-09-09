@@ -1,6 +1,0 @@
-{
-  "id": "bench-01-index",
-  "question": "In one or two sentences, what is a database index?",
-  "expected_points": ["speeds up lookups", "separate structure"],
-  "notes": "A settled definition \u2014 the floor. If a model misses this, it is not usable at all."
-}

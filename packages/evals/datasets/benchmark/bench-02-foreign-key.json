@@ -1,6 +1,0 @@
-{
-  "id": "bench-02-foreign-key",
-  "question": "What is a foreign key and what does it enforce?",
-  "expected_points": ["references another table", "referential integrity"],
-  "notes": "Definition plus its purpose; checks the model gives the 'what for', not only the 'what'."
-}

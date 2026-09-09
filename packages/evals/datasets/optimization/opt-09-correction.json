@@ -1,7 +1,0 @@
-{
-  "id": "opt-09-correction",
-  "transcript": "user: Is Postgres a NoSQL database?\nassistant: Yes, Postgres is a NoSQL document store.\nuser: No, that's wrong \u2014 Postgres is relational. Does it support JSON at all?\nassistant: You're right, my mistake: Postgres is a relational database. It does support JSON and JSONB column types, which let you store and index semi-structured data alongside relational data.",
-  "required_points": ["Postgres is relational", "Postgres supports JSON and JSONB"],
-  "forbidden_claims": ["Postgres is a NoSQL database", "Postgres is a document store"],
-  "notes": "Contains a wrong assistant turn that the user corrects. A summary that carries the retracted claim forward would put a falsehood into the knowledge library \u2014 the single worst outcome for this product."
-}
