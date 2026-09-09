@@ -660,7 +660,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** list of stub targets each later ticket must implement.
 - **Reason:** everything else depends on a deterministic command contract; a stubbed Makefile makes missing pieces visible instead of silent.
 - **Practices:** AGENTS.md entry file.
-- **Status:** in progress
+- **Status:** in review
 
 #### NU-002 Backend toolchain: uv, Ruff, Pyright, pytest
 - **Phase:** 1 · **Context:** platform
