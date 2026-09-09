@@ -766,7 +766,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** graph output paths for NU-050.
 - **Reason:** R-41 requires the graph to be current at every commit before any agent relies on it; wiring it in Phase 1 means every later ticket is developed with the graph present.
 - **Practices:** Graphify code graph; AGENTS.md entry file.
-- **Status:** not started
+- **Status:** in progress
 
 ### Phase 2 — Minimal project structure and domain boundaries
 
