@@ -723,7 +723,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** job names for later tickets to extend (`migrations`, `e2e`).
 - **Reason:** gates must exist before feature code, or evidence is only an agent's word.
 - **Practices:** Conventional Commits and ticket branches.
-- **Status:** in progress
+- **Status:** in review
 
 #### NU-005 OpenCode agent definitions and pull-request evidence template
 - **Phase:** 1 · **Context:** platform
