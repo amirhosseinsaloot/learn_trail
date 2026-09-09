@@ -921,7 +921,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** fixture names (`db_session`, `client`) for every later backend ticket.
 - **Reason:** authentication (next phase) needs tables, and migrations need to be safe before the first table exists.
 - **Practices:** PostgreSQL migration rules.
-- **Status:** not started
+- **Status:** in progress
 
 ### Phase 5 — Login and registration
 
