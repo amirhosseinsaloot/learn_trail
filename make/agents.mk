@@ -13,9 +13,10 @@ BASE ?= rebuild/v1
 WORKTREE_PARENT := $(abspath $(CURDIR)/..)
 WORKTREE_DIR = $(WORKTREE_PARENT)/nuroli-$(T)
 TICKET_NUMBER = $(shell echo "$(T)" | sed -E 's/^NU-0*//')
-TICKET_TITLE = $(shell grep -m1 -E '^\#\#\#\# $(T) ' docs/rebuild/IMPLEMENTATION.md | sed -E 's/^\#\#\#\# $(T) //')
-# First six words of the ticket title; `scratch` when the ticket has no title yet.
-DEFAULT_SLUG = $(or $(shell echo "$(TICKET_TITLE)" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$$//' | cut -d- -f1-6),scratch)
+# First six words of the ticket title from IMPLEMENTATION.md; `scratch` when the
+# ticket has no title yet. The title flows through pipes only, so backticks or
+# quotes in a title are never interpreted by a shell.
+DEFAULT_SLUG = $(or $(shell grep -m1 -E '^\#\#\#\# $(T) ' docs/rebuild/IMPLEMENTATION.md | sed -E 's/^\#\#\#\# $(T) //' | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$$//' | cut -d- -f1-6),scratch)
 SLUG = $(if $(S),$(S),$(DEFAULT_SLUG))
 TICKET_BRANCH = ticket/$(T)-$(SLUG)
 
