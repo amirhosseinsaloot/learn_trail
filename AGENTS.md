@@ -84,6 +84,15 @@ prints the commands it runs and honours the worktree file `.worktree.env`.
     run `make preflight` before opening or updating a pull request and paste
     its report into the evidence.
 
+## Sessions
+
+OpenCode project agents live in `.opencode/agents/`: `implementer` (edit and
+bash allowed; one ticket in one worktree) and `reviewer` (edit and write
+denied; runs `make` targets and posts the review evidence). Start a session
+inside the worktree that `make worktree T=NU-0nn` created. Model ids come from
+your local OpenCode configuration, never from committed files (IMPLEMENTATION.md
+section 3.1). Pull requests start from `.github/pull_request_template.md`.
+
 ## Pointers
 
 - Coding and DDD rules: IMPLEMENTATION.md section 2. Tool workflow: section 3.

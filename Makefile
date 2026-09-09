@@ -7,6 +7,15 @@ SHELL := /bin/bash
 .SHELLFLAGS := -e -o pipefail -c
 .DEFAULT_GOAL := help
 
+# Per-worktree runtime isolation (IMPLEMENTATION.md section 4.3): `make worktree`
+# writes .worktree.env with the Compose project name, port offsets, and the
+# baseline; the main checkout has no such file and uses offset 0.
+-include .worktree.env
+WORKTREE_VARS := COMPOSE_PROJECT_NAME NUROLI_WEB_PORT NUROLI_DEV_API_PORT NUROLI_DEV_DB_PORT NUROLI_DEV_VITE_PORT NUROLI_DEV_FAKE_MODEL_PORT BASE_COMMIT BASE_SCHEMA_HEAD
+# Export only the variables the file defines; an undefined variable exported
+# as an empty string would override .env inside Docker Compose.
+$(foreach v,$(WORKTREE_VARS),$(if $(value $(v)),$(eval export $(v))))
+
 .PHONY: help
 help: ## List every target with its purpose
 	@echo "Nuroli targets (rules and pointers in AGENTS.md):"
