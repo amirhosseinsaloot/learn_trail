@@ -148,6 +148,7 @@ product, users, engineering, security, and implementation.
 | R-38 | Markdown rendering allows no raw HTML; links must be http or https and open with rel="noopener noreferrer nofollow"; images disabled. | confirmed | Closes script and phishing vectors from model and web text. |
 | R-39 | A knowledge answer uses the top 5 ranked summaries, truncated to the context budget. | confirmed | Enough evidence for a focused answer within the character budget. |
 | R-40 | Every commit in the repository is authored and committed under the repository owner's git identity. No co-author or sign-off trailers, no bot commits, no agent identities. Pull requests are merged by the owner with a local fast-forward after rebase; the GitHub merge button is not used. Dependency updates come from `make deps-update` instead of Dependabot. | confirmed | The owner is accountable for every change in the history; bots and agents leave no separate authorship. |
+| R-41 | Graphify (the `graphifyy` CLI) is part of the development workflow. The graph covers code only (`backend/`, `frontend/`, `infra/`) through deterministic AST extraction; `graphify-out/` is git-ignored and rebuilt per worktree; a `post-commit` hook managed by the pre-commit framework runs `make graph-update` after every commit, with `graphify watch` optional for live sessions; agents use Make targets that wrap the CLI, no skill required; `make preflight` (rebase check, schema-head check, graph refresh, impact and conflict reports) is required before a pull request and re-run by the reviewer; the CI graph job attaches the report and fails only when the graph cannot be built or is unhealthy. Graphify informs planning and review; git, migrations, and tests remain the sources of truth. | confirmed | Community and impact views let the coordinator split work with low overlap and let reviewers see blast radius, without adding a shared file, a paid call, or a blocking oracle. |
 
 ---
 
@@ -902,7 +903,7 @@ db   (postgres:18) internal only; volume nuroli_pgdata
 - Secrets never appear in logs, error messages, the capabilities endpoint, or
   the frontend build. `.gitignore` (Phase 3) excludes `.env*` except
   `.env.example`, key and certificate files, database dumps, `backups/`, logs,
-  and agent scratch directories.
+  `graphify-out/` (rebuilt per worktree, R-41), and agent scratch directories.
 - Development, CI, and production use different values; CI uses throwaway
   values and no live provider keys.
 
@@ -984,6 +985,10 @@ Standards used as acceptance sources: [OWASP ASVS 5.0](https://owasp.org/www-pro
   check`, frontend lint, typecheck, unit tests, Playwright end-to-end against
   the Compose stack with a fake model container, pip-audit, pnpm audit,
   gitleaks. All required for merge.
+- Graph workflow (`graph.yml`): rebuilds the code graph from scratch on the
+  pull request head, checks it is non-empty and healthy, runs the impact report
+  against `rebuild/v1`, and writes it to the job summary and an artifact. It
+  fails only on an unbuildable or unhealthy graph (R-41).
 - Release workflow on a version tag: build `api` and `web` images, Trivy scan,
   push to GHCR with the tag and digest, attach the Compose file and
   `.env.example` to the GitHub release.
@@ -1015,6 +1020,20 @@ Standards used as acceptance sources: [OWASP ASVS 5.0](https://owasp.org/www-pro
   one workflow file per area, per-module routers registered once, per-feature
   frontend types, per-module test fakes. Two tickets in different areas share
   no file.
+- The code graph (R-41) is the coordinator's map: before opening a parallel
+  lane the integrator checks that the two tickets' ownership paths fall in
+  low-overlap communities (`make graph-overlap`), and before merge the
+  implementer's `make preflight` shows which nodes outside the changed files
+  are affected and which other open ticket branches touch the same nodes.
+- Every worktree records its baseline (`rebuild/v1` commit and Alembic head)
+  when created. Preflight compares the baseline with the current integration
+  head; if it moved, the implementer rebases, refreshes the graph, and re-runs
+  `make check` before the pull request is opened or merged.
+- Single-writer rule: migrations, ports, shared kernel, API schemas, Compose,
+  and workflows have one open ticket at a time (section 4.4 of
+  IMPLEMENTATION.md). Other tickets depend on that ticket rather than editing
+  those files concurrently; the graph shows the dependency but does not
+  replace it.
 - Agents may not change any decision in section 3 or any contract in sections
   6, 7, 10, 11, or 16 without a new decision recorded here.
 - Production secrets are never available to agents or CI. Development uses a
@@ -1054,6 +1073,7 @@ session variant (section 5.4) and nothing else on the server.
 | PostgreSQL | One migration per ticket, `alembic check`, full-text search, UUIDv7 | Adopt | Every schema ticket | Low |
 | Reliability | Health and readiness, JSON logs with redaction, backup and restore drill, migration lock | Adopt | Platform and release tickets | Low |
 | Testing | Adapter contract tests with recorded fixtures (respx, MSW) | Adopt | Model, search, and frontend API tickets | Low |
+| AI-assisted development | [Graphify](https://github.com/safishamsi/graphify) code knowledge graph: communities, god nodes, `affected`, `path`, `query` | Adopt | Coordinator lane planning, implementer preflight, reviewer impact check, agents answering codebase questions | Low: deterministic AST rebuild in seconds, no LLM for code; docs graph optional and owner-run |
 
 Further sources consulted: [OpenCode agents](https://opencode.ai/docs/agents/),
 [OpenCode skills](https://opencode.ai/docs/skills/),
@@ -1074,15 +1094,17 @@ AGENTS.md                      agent entry point: commands, rules, pointers
 README.md                      install and operate
 SECURITY.md                    boundaries and reporting (Phase 14)
 Makefile                       includes make/*.mk; root file holds only help and includes
-make/                          backend.mk, frontend.mk, infra.mk, agents.mk (per-area targets)
+make/                          backend.mk, frontend.mk, infra.mk, agents.mk, graph.mk (per-area targets)
+CLAUDE.md                      one line importing AGENTS.md for Claude Code sessions
+graphify-out/                  git-ignored code graph, rebuilt per worktree (graph.json, GRAPH_REPORT.md, impact.md, preflight.md)
 compose.yaml                   release topology (web, api, db)
 compose.dev.yaml               development overrides (bind mounts, fake model)
 compose.test.yaml              end-to-end stack (release shape plus fake model)
 .env.example                   placeholders only
-.github/workflows/             backend.yml, frontend.yml, e2e.yml, audit.yml, conventions.yml, release.yml
+.github/workflows/             backend.yml, frontend.yml, e2e.yml, audit.yml, conventions.yml, graph.yml, release.yml
 .github/pull_request_template.md
 .opencode/agents/              implementer.md, reviewer.md (Phase 3)
-scripts/                       restore-drill.sh, upgrade-test.sh
+scripts/                       restore-drill.sh, upgrade-test.sh, graph_impact.py, graph_conflicts.py
 backend/
   pyproject.toml  uv.lock  alembic.ini
   src/nuroli/

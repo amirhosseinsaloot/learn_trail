@@ -45,8 +45,9 @@ last.
 
 All work runs through `make` targets so agents, humans, and CI execute the same
 thing. The root `Makefile` holds only `help` and `include make/*.mk`; targets
-live in `make/backend.mk`, `make/frontend.mk`, `make/infra.mk`, and
-`make/agents.mk` so tickets in different areas never edit the same file.
+live in `make/backend.mk`, `make/frontend.mk`, `make/infra.mk`,
+`make/agents.mk`, and `make/graph.mk` so tickets in different areas never edit
+the same file.
 Targets are declared in NU-001 and must never require a global tool other than
 `make`, `docker`, `uv`, `pnpm`, and `git`. Every target honours the worktree
 environment file described in section 4.3, so two worktrees can run stacks and
@@ -73,7 +74,14 @@ tests at the same time.
 | `make deps-update` | `uv lock --upgrade` and `pnpm update --latest` within manifest ranges, then `make audit check`; run weekly by the owner and committed under the owner's identity (R-40) |
 | `make backup` / `make restore FILE=` | `pg_dump -Fc` into `backups/` / restore into a stopped stack |
 | `make check-model` | Runs `nuroli check-model` inside the API container |
-| `make worktree T=NU-0nn` | Creates `../nuroli-NU-0nn` worktree on branch `ticket/NU-0nn-<slug>` from `rebuild/v1`, copies `.env` (or `.env.example` with development defaults), and writes `.worktree.env` with the project name and port offsets (section 4.3) |
+| `make worktree T=NU-0nn` | Creates `../nuroli-NU-0nn` worktree on branch `ticket/NU-0nn-<slug>` from `rebuild/v1`, copies `.env` (or `.env.example` with development defaults), writes `.worktree.env` with the project name, port offsets, and the baseline (`BASE_COMMIT`, `BASE_SCHEMA_HEAD`), and builds the code graph (section 4.3) |
+| `make graph-build` | Full code-graph rebuild: removes `graphify-out/` and runs `graphify update .` (AST only, no LLM); `FORCE=1` allowed after refactors that delete code |
+| `make graph-update` | Incremental `graphify update .`; refuses to shrink the graph unless `FORCE=1`; runs automatically after every commit through the post-commit hook |
+| `make graph-watch` | `graphify watch .` in the foreground for a live session (optional, for a Herdr pane) |
+| `make graph-impact BASE=<ref>` | `scripts/graph_impact.py`: changed files against `BASE` (default `origin/rebuild/v1`) → changed nodes and communities → affected nodes outside the changed files (reverse traversal, depth 2) and god nodes touched; writes `graphify-out/impact.md` |
+| `make graph-conflicts` | `scripts/graph_conflicts.py`: for every other `origin/ticket/*` branch, intersects its changed and affected node sets with this branch's; writes `graphify-out/conflicts.md` |
+| `make graph-overlap A=<paths> B=<paths>` | Same script in planning mode: community overlap between two ownership boundaries before a lane is opened |
+| `make preflight` | Fetches `origin/rebuild/v1`; fails if the branch is not rebased on it; compares `BASE_COMMIT` and `BASE_SCHEMA_HEAD` with the current head and Alembic head and reports "baseline moved"; runs `graph-update`, verifies `built_at_commit` equals `HEAD` with a clean tree, then `graph-impact` and `graph-conflicts`; writes `graphify-out/preflight.md` for the pull request evidence |
 
 Every target prints the exact commands it runs. A target that cannot run its
 tool fails with a non-zero exit and a one-line reason; it never silently skips.
@@ -272,6 +280,48 @@ Every instruction in this document is executable by any agent or human who can
 run `make`. Verification is a command with an expected exit code and output,
 never a model's opinion. Reports quote command output.
 
+### 3.5 Graphify (R-41)
+
+Graphify keeps a code knowledge graph of `backend/`, `frontend/`, and `infra/`
+in `graphify-out/` (git-ignored, rebuilt per worktree, deterministic AST
+extraction, no LLM). The graph informs; git, migrations, and tests decide.
+
+1. **Split work by low-overlap communities.** Before the integrator opens a
+   parallel lane (section 4.9), `make graph-overlap A=<paths of ticket A>
+   B=<paths of ticket B>` must show no shared community with more than a
+   handful of nodes; otherwise the tickets run sequentially. Tickets still name
+   files and modules, never community ids, because communities are an analysis
+   output that can change as code grows. Each agent works in its own worktree
+   and branch (section 4.3).
+2. **Single writer for shared critical resources.** Migrations, `ports/`,
+   `shared_kernel/`, API schemas, Compose files, workflows, and the root
+   `Makefile` have one open ticket at a time (section 4.4). A ticket that needs
+   a change there depends on the ticket that owns it; it never edits those
+   files concurrently and never asks the graph to arbitrate.
+3. **Refresh, then re-check the baseline before writing and before merging.**
+   The post-commit hook runs `make graph-update` after every commit, and
+   `make graph-watch` may run in a pane during a session. Before opening or
+   updating a pull request, `make preflight` re-fetches `rebuild/v1`, compares
+   the worktree's recorded `BASE_COMMIT` and `BASE_SCHEMA_HEAD` with the
+   current head, and refreshes the graph. If the baseline moved, the
+   implementer rebases, re-runs `make check`, and runs `make preflight` again.
+   The reviewer repeats `make preflight` on the branch head.
+4. **Impact and conflict analysis before merge, tests as the gate.** Preflight
+   writes `graphify-out/impact.md` (nodes outside the changed files that are
+   affected, communities and god nodes touched) and `graphify-out/conflicts.md`
+   (overlap with other open ticket branches). Both go into the pull request
+   evidence. A non-empty conflict report requires the integrator to merge the
+   tickets in dependency order and the later one to rebase and re-verify. CI's
+   `graph` job rebuilds the graph from scratch and fails only when the graph
+   is unbuildable or unhealthy. No merge is blocked by the graph alone.
+
+Agents use the graph to answer codebase questions cheaply: `graphify query
+"<question>"`, `graphify explain "<node>"`, `graphify path "A" "B"`, and
+`graphify god-nodes`. Claude Code sessions may also use the `/graphify` skill;
+OpenCode sessions use the CLI only. A docs-plus-code graph (LLM semantic
+extraction of `docs/rebuild/`) is optional and built only by the owner in the
+main checkout; it is never required by a ticket.
+
 ---
 
 ## 4. Agent roles and workflow
@@ -305,7 +355,9 @@ Agents do not merge, and the GitHub merge button is not used.
 
 - A ticket is assigned only when every ticket in its Dependencies is merged.
 - At most two implementers run concurrently, on tickets with disjoint
-  ownership boundaries and no shared serialized files (section 4.4).
+  ownership boundaries, no shared serialized files (section 4.4), and no
+  significant community overlap in `make graph-overlap` once a code graph
+  exists (section 3.5).
 - The reviewer for a ticket is never its implementer.
 - Tickets marked `not ready` are never assigned.
 
@@ -331,6 +383,12 @@ Agents do not merge, and the GitHub merge button is not used.
   Playwright config reads these variables, so two agents can run `make dev`,
   `make test-integration`, and `make e2e` at the same time without port or
   volume collisions. The main checkout uses offset 0.
+- `.worktree.env` also records the baseline: `BASE_COMMIT` (the `rebuild/v1`
+  commit the branch started from) and `BASE_SCHEMA_HEAD` (the Alembic head at
+  that commit). `make preflight` compares both with the current integration
+  head and reports "baseline moved" when either changed (section 3.5).
+- `make worktree` builds the code graph for the new worktree so the first
+  `make preflight` and any `graphify query` work immediately.
 - Worktrees are removed after merge (`git worktree remove`), which also stops
   and removes that worktree's Compose project (`make worktree-clean T=NU-0nn`).
 
@@ -349,7 +407,7 @@ concurrent ticket touches them): `backend/migrations/`, `backend/pyproject.toml`
 
 Area-owned files that parallel tickets may edit without serialization because
 no two areas share them: `make/backend.mk`, `make/frontend.mk`, `make/infra.mk`,
-`make/agents.mk`; each module's own packages and tests; each frontend feature
+`make/agents.mk`, `make/graph.mk` (graph targets belong to the agents area); each module's own packages and tests; each frontend feature
 directory; `.github/workflows/<area>.yml` when the ticket is the only open one
 in that area.
 
@@ -385,9 +443,14 @@ under fixed headings:
 6. **Limitations:** anything not done or not verified.
 7. **Follow-up risks:** what the next ticket should watch.
 8. **Handoff:** the information the ticket's Handoff field asks for.
+9. **Preflight:** the contents of `graphify-out/preflight.md` from the branch
+   head (baseline status, impact summary, conflict summary), once NU-050 is
+   merged.
 
 The reviewer adds: **Boundary check**, **Architecture check** (layers,
-invariants, ownership), **Security check**, **Reliability check**, **Verdict**.
+invariants, ownership), **Security check**, **Reliability check**, **Impact
+check** (the reviewer's own `make preflight` output and whether affected nodes
+outside the ticket boundary are covered by tests), **Verdict**.
 
 ### 4.7 Avoiding duplicate or conflicting work
 
@@ -413,6 +476,8 @@ integrator may open others when both conditions hold.
 | Lane A | Lane B | Shared files | Note |
 | --- | --- | --- | --- |
 | NU-002 backend toolchain | NU-003 frontend toolchain | none (`make/backend.mk` vs `make/frontend.mk`) | first parallel pair |
+| NU-049 graph targets and hook | NU-006 backend module layout | none (`make/graph.mk` vs backend packages; `AGENTS.md` is serialized and NU-006 does not touch it) | |
+| NU-050 impact and preflight | NU-009 settings and logging | none | |
 | NU-007 shared kernel | NU-008 frontend shell | none | |
 | NU-009 settings and logging | NU-008 frontend shell | none | |
 | NU-012 identity domain | NU-010 Compose stacks | none | |
@@ -430,7 +495,10 @@ integrator may open others when both conditions hold.
 | NU-043 security gates | NU-044 accessibility gates | none | |
 
 Everything else is sequential. A reviewer session may run alongside any
-implementer session at all times.
+implementer session at all times. From NU-050 onward, opening any lane pair
+also requires a clean `make graph-overlap` for the two tickets' ownership
+paths (section 3.5); lanes before that are judged by directory alone because
+little code exists.
 
 ---
 
@@ -439,7 +507,9 @@ implementer session at all times.
 ### 5.1 Pre-commit (installed by `make setup`)
 
 Ruff format and lint on staged Python, Prettier and ESLint on staged frontend
-files, `gitleaks protect --staged`, and a check that `.env` is not staged.
+files, `gitleaks protect --staged`, a check that `.env` is not staged, and, at
+the `post-commit` stage, `make graph-update` (R-41). The pre-commit framework
+is the only hook manager; `graphify hook install` is not used.
 
 ### 5.2 Pull-request gate (GitHub Actions, one workflow file per area, all required)
 
@@ -454,6 +524,7 @@ files, `gitleaks protect --staged`, and a check that `.env` is not staged.
 | `e2e.yml` | e2e | `make e2e` against the Compose test stack with the fake model | Journeys, accessibility (axe) |
 | `audit.yml` | audit | `make audit` | Vulnerabilities and secrets |
 | `conventions.yml` | conventions | branch regex, commit subject regex, author and committer identity, no co-author or sign-off trailers (R-40) | Traceability and identity |
+| `graph.yml` | graph | `make graph-build` from scratch, health check, `make graph-impact BASE=origin/rebuild/v1`; report to job summary and artifact; fails only if unbuildable or unhealthy | Blast radius visible on every PR |
 
 Merges into `rebuild/v1` require all jobs green plus one approving review that
 contains the evidence headings.
@@ -477,7 +548,8 @@ Unless a ticket says otherwise:
 
 - **Standard verification:** `make check` passes locally; the ticket's specific
   commands pass; `make e2e` passes when the ticket touches the frontend or an
-  endpoint used by the frontend.
+  endpoint used by the frontend; `make preflight` passes on the branch head
+  (from NU-050 onward).
 - **Standard definition of done:** all acceptance criteria verified; required
   tests present and passing; no files outside the boundary; no new dependency
   without justification; `.env.example` and AGENTS.md updated when relevant;
@@ -523,6 +595,7 @@ Full evaluation in ARCHITECTURE.md section 22.3 (R-27). Usage boundaries:
 | Adapter contract tests with recorded fixtures | create or change an adapter or the SSE encoder | domain code |
 | Import-boundary lint | every backend ticket | frontend |
 | Conventional Commits and ticket branches | every ticket | — |
+| Graphify code graph (section 3.5) | lane planning, every preflight and review, codebase questions | deciding merges, replacing tests, tickets referencing community ids |
 
 No third-party skill package is required or installed.
 
@@ -541,6 +614,7 @@ No third-party skill package is required or installed.
 | I-07 | The fake model container is the default model for development and every automated test. | Tests run without paid calls and without keys. |
 | I-08 | Release images publish to `ghcr.io/amirhosseinsaloot/nuroli-api` and `ghcr.io/amirhosseinsaloot/nuroli-web`. | Matches the repository owner. |
 | I-09 | Conflict points for parallel agents are removed structurally: per-area Makefile includes, per-area workflow files, per-module routers registered once, per-feature frontend types, per-module test fakes, per-worktree Compose project names and ports. | Two implementers must be able to work without touching a shared file or port. |
+| I-10 | Graphify is wired in through Make targets, a post-commit hook, `make preflight`, and a non-blocking CI graph job (section 3.5, R-41); ticket ids are stable and NU-049 and NU-050 sit in Phases 1 and 2 by dependency, not by number. | The graph must be current at every commit and consulted at every lane, preflight, and review without becoming a shared artifact or a gate. |
 
 ---
 
@@ -548,7 +622,9 @@ No third-party skill package is required or installed.
 
 Ordered by dependency. Each ticket is small enough for one implementer and one
 reviewer. Fields marked "standard" refer to section 5.4. Phases follow the
-order required for the rebuild: foundation and authentication first.
+order required for the rebuild: foundation and authentication first. Ticket ids
+are stable and never renumbered; a ticket added later keeps the next free id
+and is placed in the phase its dependencies require (NU-049 and NU-050).
 
 Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 **Objective** · **Outcome** · **Dependencies** (merged tickets) ·
@@ -565,13 +641,13 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Objective:** Create the root layout from ARCHITECTURE.md section 23 with a root `Makefile` (help plus `include make/*.mk`) and `make/backend.mk`, `make/frontend.mk`, `make/infra.mk`, `make/agents.mk` whose targets exist and fail loudly until later tickets implement them, `AGENTS.md`, `README.md` stub, `.gitignore`, `.editorconfig`, `.env.example` with every variable from ARCHITECTURE.md section 16.
 - **Outcome:** Any agent can clone, read AGENTS.md, and run `make` to see the command contract.
 - **Dependencies:** none · **Prerequisites:** Phase 3 authorized; `make`, `git`.
-- **Files:** `AGENTS.md`, `README.md`, `Makefile`, `make/*.mk`, `.gitignore`, `.editorconfig`, `.env.example`, empty `backend/`, `frontend/`, `infra/`, `scripts/` directories with `.gitkeep`.
+- **Files:** `AGENTS.md`, `CLAUDE.md`, `README.md`, `Makefile`, `make/*.mk`, `.gitignore`, `.editorconfig`, `.env.example`, empty `backend/`, `frontend/`, `infra/`, `scripts/` directories with `.gitkeep`.
 - **Ownership:** serialized (root files).
 - **Domain:** none.
-- **Contracts:** Makefile target names from section 2.1; `.env.example` variable names from ARCHITECTURE.md section 16; `.gitignore` covers `.env`, `.env.*` except `.env.example`, `*.pem`, `*.key`, `*.crt`, `*.dump`, `backups/`, `*.log`, `node_modules/`, `.venv/`, `dist/`, `__pycache__/`, `.pytest_cache/`, `.ruff_cache/`, `playwright-report/`, `test-results/`, `.opencode/*.local.*`, `.agent-scratch/`, `.worktree.env`.
+- **Contracts:** Makefile target names from section 2.1; `.env.example` variable names from ARCHITECTURE.md section 16; `.gitignore` covers `.env`, `.env.*` except `.env.example`, `*.pem`, `*.key`, `*.crt`, `*.dump`, `backups/`, `*.log`, `node_modules/`, `.venv/`, `dist/`, `__pycache__/`, `.pytest_cache/`, `.ruff_cache/`, `playwright-report/`, `test-results/`, `.opencode/*.local.*`, `.agent-scratch/`, `.worktree.env`, `graphify-out/`.
 - **Security:** no secret placeholders that look real; `.env` ignored before any `.env` can exist.
 - **Reliability:** unimplemented targets exit 1 with "not implemented until NU-0nn".
-- **Steps:** 1. Create directories. 2. Write Makefile with all targets from section 2.1, each echoing its commands; stub bodies exit 1 with the owning ticket id. 3. Write `.env.example` with placeholders and comments. 4. Write AGENTS.md: purpose, command table, the rules (ownership boundary, stop-and-ask, no secrets, tests required, layer boundaries, Conventional Commits, owner-only git identity with no trailers (R-40), evidence headings, no over-engineering, read only relevant sections, never edit planning docs, one worktree per session), pointers to sections of this document and ARCHITECTURE.md. 5. Write README stub with install placeholder. 6. Write `.gitignore` and `.editorconfig`.
+- **Steps:** 1. Create directories. 2. Write Makefile with all targets from section 2.1, each echoing its commands; stub bodies exit 1 with the owning ticket id. 3. Write `.env.example` with placeholders and comments. 4. Write AGENTS.md: purpose, command table, the rules (ownership boundary, stop-and-ask, no secrets, tests required, layer boundaries, Conventional Commits, owner-only git identity with no trailers (R-40), evidence headings, no over-engineering, read only relevant sections, never edit planning docs, one worktree per session, keep the code graph current and run `make preflight` before a pull request (R-41)), pointers to sections of this document and ARCHITECTURE.md. Also write a one-line `CLAUDE.md` containing `@AGENTS.md` so Claude Code sessions load the same rules. 5. Write README stub with install placeholder. 6. Write `.gitignore` and `.editorconfig`.
 - **Failure cases:** `make` without a target prints help; unknown target fails.
 - **Tests:** shell test `make help` exit 0; `make lint` exits 1 with the NU-002 message; `git check-ignore .env` succeeds.
 - **Verify:** `make help`, `git check-ignore -q .env && echo ignored`, `grep -c NUROLI_ .env.example` (equals the variable count in ARCHITECTURE.md section 16).
@@ -643,7 +719,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 
 #### NU-005 OpenCode agent definitions and pull-request evidence template
 - **Phase:** 1 · **Context:** platform
-- **Objective:** `.opencode/agents/implementer.md` and `.opencode/agents/reviewer.md` with permissions from section 3.1 and prompts that point to AGENTS.md and this document's sections; `.github/pull_request_template.md` with the evidence headings from section 4.6; `make worktree` and `make worktree-clean` writing and honouring `.worktree.env` (section 4.3).
+- **Objective:** `.opencode/agents/implementer.md` and `.opencode/agents/reviewer.md` with permissions from section 3.1 and prompts that point to AGENTS.md and this document's sections; `.github/pull_request_template.md` with the evidence headings from section 4.6 including the Preflight heading; `make worktree` and `make worktree-clean` writing and honouring `.worktree.env` (project name, port offsets, `BASE_COMMIT`, `BASE_SCHEMA_HEAD`; section 4.3).
 - **Outcome:** An OpenCode session can be started as implementer or reviewer with the right permissions; every pull request starts with the evidence skeleton.
 - **Dependencies:** NU-004 · **Prerequisites:** OpenCode installed locally (not in CI).
 - **Files:** `.opencode/agents/*.md`, `.github/pull_request_template.md`, `make/agents.mk`, `Makefile` (include of `.worktree.env` when present).
@@ -660,6 +736,27 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** none.
 - **Reason:** implementer and reviewer separation must be mechanical before feature tickets start.
 - **Practices:** AGENTS.md entry file.
+
+#### NU-049 Graphify: graph targets, post-commit refresh, agent guidance
+- **Phase:** 1 · **Context:** platform (agents area)
+- **Objective:** `make/graph.mk` with `graph-build`, `graph-update`, `graph-watch` wrapping the `graphify` CLI (installed as a uv tool by `make setup`: `uv tool install graphifyy`); the pre-commit framework `post-commit` stage running `make graph-update`; `make worktree` extended to build the graph for a new worktree; AGENTS.md section describing when to run `graphify query`, `explain`, `path`, and `god-nodes`; `.gitignore` already covers `graphify-out/` (NU-001).
+- **Outcome:** Every worktree has a current code graph after every commit without any LLM call, and agents know how to ask it questions.
+- **Dependencies:** NU-004, NU-005 · **Prerequisites:** `uv` available; network for the one-time tool install.
+- **Files:** `make/graph.mk`, `make/agents.mk` (worktree graph build), `.pre-commit-config.yaml` (post-commit stage only), `AGENTS.md` (graph section), `README.md` (developer section).
+- **Ownership:** serialized (`AGENTS.md`, `.pre-commit-config.yaml`); agents area.
+- **Domain:** none.
+- **Contracts:** target names and behavior per section 2.1; graph scope is `.` with AST-only extraction (docs are ignored by `graphify update`); `graph-update` never passes `--force` unless `FORCE=1`.
+- **Security:** graphify makes no network calls in this flow and reads no API keys; `graphify-out/` is ignored so no extracted source structure is committed; the hook runs only local commands.
+- **Reliability:** the post-commit hook must never fail a commit: it runs with `always_run` and exits 0 after printing an error if the graph cannot be updated, and writes `graphify-out/.needs_rebuild` so the next `make preflight` runs `graph-build`.
+- **Steps:** 1. `make setup` installs graphifyy as a uv tool and prints its version. 2. Write `make/graph.mk`. 3. Add the post-commit stage hook. 4. Extend `make worktree`. 5. Write the AGENTS.md section with the four rules from section 3.5 condensed to six lines. 6. Verify on the current repository (the graph will be small until code exists).
+- **Failure cases:** graphify not installed → targets print the install command and exit 1; shrink refusal → message explains `FORCE=1`; graph build on an empty code tree → `graph-build` reports "no code files" and exits 0 so early Phase 1 commits are not blocked.
+- **Tests:** shell tests: after a commit that adds a Python file, `graphify-out/graph.json` contains a node whose `source_file` is that file and `built_at_commit` equals `HEAD`; `make graph-update FORCE=1` after deleting the file removes the node; the hook exits 0 when `graphify-out/` is deleted first.
+- **Verify:** `make graph-build && make graph-update && git commit --allow-empty -m "chore: NU-049 hook check" && test -f graphify-out/graph.json` (the empty commit is amended away before the pull request).
+- **Acceptance:** targets work from a clean clone after `make setup`; hook runs after commit and never blocks it; AGENTS.md section present; `graphify god-nodes` prints on the current tree.
+- **Done:** standard · **Reviewer evidence:** standard plus the hook log from a commit.
+- **Handoff:** graph output paths for NU-050.
+- **Reason:** R-41 requires the graph to be current at every commit before any agent relies on it; wiring it in Phase 1 means every later ticket is developed with the graph present.
+- **Practices:** Graphify code graph; AGENTS.md entry file.
 
 ### Phase 2 — Minimal project structure and domain boundaries
 
@@ -723,6 +820,27 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** component API of primitives for feature tickets.
 - **Reason:** shared shell and primitives prevent each feature ticket from inventing its own layout.
 - **Practices:** WCAG 2.2 AA with axe.
+
+#### NU-050 Graphify: impact, conflict, overlap reports, preflight, CI graph job
+- **Phase:** 2 · **Context:** platform (agents area)
+- **Objective:** `scripts/graph_impact.py` (changed files against a base ref → changed nodes, communities, affected nodes outside the changed files via reverse traversal depth 2, god nodes touched; Markdown report), `scripts/graph_conflicts.py` (branch mode: overlap of changed-plus-affected node sets with every other `origin/ticket/*` branch; planning mode `--paths-a/--paths-b`: community overlap between two ownership boundaries), Make targets `graph-impact`, `graph-conflicts`, `graph-overlap`, `preflight` (section 2.1 semantics including baseline comparison and `built_at_commit` check), and `.github/workflows/graph.yml`.
+- **Outcome:** Implementers, reviewers, and the integrator see blast radius and overlap before every merge, and CI shows it on every pull request.
+- **Dependencies:** NU-049, NU-006, NU-008 · **Prerequisites:** a code graph with at least the module skeletons.
+- **Files:** `scripts/graph_impact.py`, `scripts/graph_conflicts.py`, `scripts/tests/test_graph_scripts.py`, `make/graph.mk`, `.github/workflows/graph.yml`, `.github/pull_request_template.md` (Preflight heading), `AGENTS.md` (preflight rule).
+- **Ownership:** serialized (`.github/`, `AGENTS.md`); agents area.
+- **Domain:** none.
+- **Contracts:** scripts read only `graphify-out/graph.json` (fields `id`, `label`, `source_file`, `community`, `community_name`, `built_at_commit`) and git; they depend on no application code; report formats are fixed Markdown with the sections Baseline, Changed nodes, Affected nodes, Communities, God nodes, Conflicts; exit codes: 0 report written, 1 graph missing or unhealthy, 2 branch not rebased or baseline moved (preflight only).
+- **Security:** workflow permissions `contents: read` only; reports contain file paths and symbol names, never file contents; no network access beyond git fetch.
+- **Reliability:** scripts run under 10 seconds on the expected graph size; `preflight` refuses to run with a dirty tree so `built_at_commit` is meaningful; the CI job uploads the report even when the impact set is empty.
+- **Steps:** 1. Write the scripts test-first against a fixture `graph.json` and a temporary git repository with two branches. 2. Wire targets. 3. Write `preflight` as a shell sequence in `make/graph.mk` calling the scripts. 4. Add the workflow with job summary output. 5. Update the PR template and AGENTS.md.
+- **Failure cases:** no other ticket branches (empty conflicts section); node with no `source_file` (ignored, counted); base ref missing (exit 1 with message); graph built at a different commit (preflight rebuilds, then re-checks); two Alembic heads (preflight exit 2 naming both).
+- **Tests:** unit tests for both scripts on fixtures (changed-file mapping, reverse traversal depth, overlap intersection, planning mode); a shell test for `preflight` exit codes on a rebased branch, a stale branch, and a dirty tree.
+- **Verify:** `make graph-impact BASE=origin/rebuild/v1`; `make graph-overlap A=backend/src/nuroli/identity B=frontend/src/features/auth`; `make preflight`; workflow green on the pull request with the summary visible.
+- **Acceptance:** reports produced with the fixed sections; preflight exit codes verified; CI job green and non-blocking on impact content.
+- **Done:** standard · **Reviewer evidence:** standard plus the reviewer's own preflight output on the branch.
+- **Handoff:** from this ticket on, every pull request carries a Preflight section and every lane pair requires `make graph-overlap` (section 4.9).
+- **Reason:** turns the four Graphify rules in section 3.5 into commands with exit codes, so the coordinator, implementer, and reviewer act on the same report instead of on impressions.
+- **Practices:** Graphify code graph; test-first (scripts have logic).
 
 ### Phase 3 — Configuration and secret boundaries
 
@@ -1552,8 +1670,8 @@ decisions it names in ARCHITECTURE.md.
 
 | Phase | Exit evidence |
 | --- | --- |
-| 1 | Clean clone: `make setup` and `make check` pass with only the tooling in place; pull-request gate green |
-| 2 | Boundary lint rejects a forbidden import; shell renders at both widths with axe clean |
+| 1 | Clean clone: `make setup` and `make check` pass with only the tooling in place; pull-request gate green; a commit refreshes `graphify-out/graph.json` through the hook |
+| 2 | Boundary lint rejects a forbidden import; shell renders at both widths with axe clean; `make preflight` produces impact and conflict reports and the CI graph job is green |
 | 3 | Misconfiguration fails fast; `make up` serves `/health` through nginx with security headers |
 | 4 | `/ready` reflects migrations; CI runs against PostgreSQL; two API starts do not race |
 | 5 | Register, sign in (both methods), sign out in the browser; operator reset works |
