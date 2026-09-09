@@ -2,2204 +2,526 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Nuroli — design prototype v1</title>
-
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nuroli design specification</title>
 <!--
-  ============================================================================
-  Nuroli — PROPOSED DESIGN REFERENCE (prototype v1)
-  ============================================================================
-  This file is a DESIGN PROTOTYPE, not production software and not an approved
-  specification. Everything behind the interface is simulated in the browser:
-  there is no backend, no account system, no model inference and no live web
-  search. It exists to make interaction and visual decisions reviewable.
-
-  CONSEQUENTIAL ASSUMPTIONS MADE HERE (all open to change)
-  ---------------------------------------------------------------------------
-  A1. KNOWLEDGE COVERAGE (explicitly flagged as pending in the brief).
-      When saved summaries do not fully cover a knowledge question, the
-      prototype: (a) answers only the supported parts, (b) cites the saved
-      summaries it used, (c) names the gaps in plain language, and (d) offers a
-      SEPARATE, clearly labelled web search as a distinct second step. Outside
-      information is never merged silently into a knowledge answer. Web results
-      are rendered in a visibly different container ("From the web") and are
-      never presented as saved knowledge.
-
-  A2. COVERAGE IS CLASSIFIED IN THREE STATES: supported / partly supported /
-      not covered. In this prototype the classifier is a transparent keyword +
-      declared-gap match over confirmed summaries. Production retrieval will
-      differ; the three-state UI contract is the design proposal, not the
-      algorithm.
-
-  A3. ONE SHARED CONVERSATION, PER-REPLY MODEL CHOICE. The model picker sets
-      the model for the NEXT reply only. Earlier messages are never re-run or
-      removed, and every assistant message permanently shows the model that
-      produced it. Model names (Atlas 3 / Kestrel 1.5 / Quarry Deep) are
-      ILLUSTRATIVE PLACEHOLDERS, not vendor commitments.
-
-  A4. SUMMARY CONFIRMATION IS THE ONLY WRITE PATH INTO KNOWLEDGE. Drafts are
-      never searchable. Raw transcripts are never searchable. A summary becomes
-      knowledge only on explicit confirm, and one confirm creates exactly one
-      library entry (double-submit is guarded in code, not just in copy).
-
-  A5. "CANCEL" ON A SUMMARY DRAFT RETURNS TO THE CONVERSATION AND KEEPS THE
-      DRAFT so work is not lost by accident; discarding is a separate,
-      explicitly labelled destructive action. This is a deliberate reading of
-      "cancel without saving" plus "preserve draft edits during navigation".
-
-  A6. SUMMARY STRUCTURE is proposed as: question → conclusions → open questions
-      → sources. Stored as light plain text markup (# heading, - bullet) so the
-      draft stays directly editable in one field rather than a rigid form.
-
-  A7. SOURCES OPEN IN A DRAWER (desktop) / BOTTOM SHEET (mobile), never a page
-      navigation, so reading position in the conversation is never lost.
-
-  A8. PERSISTENCE. State is held in memory. localStorage is used only as an
-      opportunistic mirror inside try/catch; if storage is unavailable, blocked
-      or corrupt, the prototype silently falls back to memory-only and still
-      works. Nothing here implies a production storage model.
-
-  A9. LIGHT THEME ONLY for v1. A dark reading theme is a known follow-up, not
-      an omission.
-
-  A10. SAMPLE SOURCE LINKS ARE REAL, STABLE PUBLIC URLS (Wikipedia, crdt.tech,
-      gwern.net) so link handling can be reviewed honestly. The quoted snippets
-      beside them are ILLUSTRATIVE and were not fetched. No live research
-      occurred at any point.
-
-  A11. ACCESSIBILITY FLOOR treated as part of the design, not a pass: semantic
-      landmarks, labelled controls, visible focus, dialog focus trapping and
-      restoration, reduced-motion support, and no state communicated by colour
-      alone (every status carries an icon and a word).
-
-  Out of scope on purpose: payments, teams, social, gamification, analytics,
-  uploads, automatic model debates.
-
-  VERIFICATION PERFORMED BEFORE HANDOFF
-  ---------------------------------------------------------------------------
-  125 automated checks were run against this exact file in a headless DOM
-  (jsdom), at an emulated 1440px and again at 390px:
-    - full walkthrough: enter -> converse -> switch model -> inspect sources ->
-      summarise -> edit -> cancel -> resume -> confirm -> library -> ask ->
-      follow citation -> reopen conversation;
-    - three save clicks in a row produce exactly one library entry;
-    - stop mid-stream, retry after stop, retry after a simulated failure;
-    - supported / partly supported / not covered knowledge answers;
-    - empty account, no-results search, reset;
-    - composer and summary-draft text surviving navigation and reload;
-    - localStorage blocked, corrupt and version-mismatched;
-    - focus trap, Escape, focus restoration, labelled controls, accessible
-      names for controls whose text is hidden by CSS at 390px.
-  Colour contrast was computed for every foreground/background token pair; all
-  text pairs meet WCAG AA (>=4.5:1) and --ink-50 / --ink-30 were darkened from
-  their first values because they did not.
-  NOT verified: real-browser rendering. No screenshot tool was available in the
-  authoring environment, so visual layout at both widths is reasoned, not seen.
-  ============================================================================
+  Nuroli — DESIGN SPECIFICATION (Phase 1)
+  Status: Phases 1 and 2 complete and approved by the product owner. Decision references (R-nn) point at docs/rebuild/ARCHITECTURE.md section 3.
+  This file contains no application logic. Mockups are static HTML/CSS that use
+  the production token set so implementers can copy tokens and structure directly.
+  Superseded: the earlier interactive prototype (R-23).
 -->
-
 <style>
-/* ==========================================================================
-   1. TOKENS
-   Palette reasoning: a cool bone "paper" for long reading, a green-black ink,
-   and two working accents that carry meaning rather than decoration —
-   pine (confirmed knowledge) and blaze ochre (unconfirmed draft), after trail
-   blazes. Slate blue is reserved exclusively for web evidence.
-   ========================================================================== */
+/* =========================================================================
+   1. TOKENS — production values. frontend/src/styles/tokens.css copies this block.
+   ========================================================================= */
 :root{
-  /* surfaces + ink */
-  --paper:        #F1F2EE;
-  --surface:      #FFFFFF;
-  --surface-2:    #F8F9F6;
-  --surface-sunk: #EAECE6;
-  --ink:          #17201C;
-  --ink-70:       #414B45;
-  --ink-50:       #626B65;
-  --ink-30:       #77807A;
-  --line:         #DEE1DA;
-  --line-strong:  #C4CABF;
+  --paper:#F1F2EE; --surface:#FFFFFF; --surface-2:#F8F9F6; --surface-sunk:#EAECE6;
+  --ink:#17201C; --ink-70:#414B45; --ink-50:#626B65; --ink-30:#77807A;
+  --line:#DEE1DA; --line-strong:#C4CABF;
+  --trail:#1F6B54; --trail-deep:#16513F; --trail-soft:#E3EFE9;   /* confirmed knowledge, primary action */
+  --blaze:#9A5B18; --blaze-soft:#F7EBDB;                          /* draft, unconfirmed */
+  --web:#3A5A85; --web-soft:#E5EBF3;                              /* web evidence only */
+  --danger:#96382F; --danger-soft:#F8E7E4;
+  --font-ui:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --font-read:"Iowan Old Style","Palatino Linotype",Palatino,Charter,Georgia,"Times New Roman",serif;
+  --font-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --t-xs:11.5px; --t-sm:13px; --t-base:14.5px; --t-md:16px; --t-lg:19px; --t-xl:24px; --t-2xl:31px; --t-3xl:42px;
+  --lh-tight:1.22; --lh-ui:1.45; --lh-read:1.62;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s7:32px; --s8:40px; --s9:56px; --s10:80px;
+  --r-sm:5px; --r-md:9px; --r-lg:14px; --r-pill:999px; --bw:1px;
+  --e1:0 1px 2px rgba(23,32,28,.06);
+  --e2:0 2px 6px rgba(23,32,28,.07),0 1px 2px rgba(23,32,28,.05);
+  --e3:0 14px 34px rgba(23,32,28,.14),0 3px 10px rgba(23,32,28,.07);
+  --focus:0 0 0 2px var(--surface),0 0 0 4px var(--trail);
+  --rail-w:216px; --list-w:292px; --read-w:68ch; --dur:160ms;
+}
+@media (prefers-reduced-motion:reduce){ :root{--dur:0ms} *{transition-duration:.001ms!important;animation-duration:.001ms!important} }
 
-  /* meaning accents */
-  --trail:        #1F6B54;   /* confirmed knowledge, primary action */
-  --trail-deep:   #16513F;
-  --trail-soft:   #E3EFE9;
-  --blaze:        #9A5B18;   /* draft / unconfirmed */
-  --blaze-soft:   #F7EBDB;
-  --web:          #3A5A85;   /* web evidence only */
-  --web-soft:     #E5EBF3;
-  --danger:       #96382F;
-  --danger-soft:  #F8E7E4;
+/* =========================================================================
+   2. SPEC DOCUMENT STYLES (this document only)
+   ========================================================================= */
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font-ui);font-size:var(--t-base);line-height:var(--lh-ui)}
+main{max-width:1180px;margin:0 auto;padding:var(--s7) var(--s5) var(--s10)}
+h1{font-family:var(--font-read);font-size:var(--t-3xl);line-height:var(--lh-tight);margin:0 0 var(--s2)}
+h2{font-family:var(--font-read);font-size:var(--t-2xl);line-height:var(--lh-tight);margin:var(--s9) 0 var(--s4);padding-top:var(--s5);border-top:var(--bw) solid var(--line-strong)}
+h3{font-size:var(--t-lg);margin:var(--s7) 0 var(--s3)}
+h4{font-size:var(--t-md);margin:var(--s5) 0 var(--s2)}
+p,li{max-width:78ch}
+code{font-family:var(--font-mono);font-size:.92em;background:var(--surface-sunk);padding:1px 5px;border-radius:var(--r-sm)}
+pre{font-family:var(--font-mono);font-size:var(--t-sm);background:var(--surface);border:var(--bw) solid var(--line);border-radius:var(--r-md);padding:var(--s4);overflow:auto}
+table{border-collapse:collapse;width:100%;margin:var(--s3) 0 var(--s5);font-size:var(--t-sm);background:var(--surface)}
+th,td{text-align:left;vertical-align:top;padding:8px 10px;border:var(--bw) solid var(--line)}
+th{background:var(--surface-2);font-weight:600}
+.ref{font-family:var(--font-mono);font-size:var(--t-xs);color:var(--trail-deep);background:var(--trail-soft);padding:1px 6px;border-radius:var(--r-pill);white-space:nowrap}
+.prop{font-family:var(--font-mono);font-size:var(--t-xs);color:var(--blaze);background:var(--blaze-soft);padding:1px 6px;border-radius:var(--r-pill);white-space:nowrap}
+.status{border:var(--bw) solid var(--blaze);background:var(--blaze-soft);border-radius:var(--r-md);padding:var(--s3) var(--s4);margin:var(--s4) 0 var(--s6)}
+.toc{columns:2;column-gap:var(--s7);font-size:var(--t-sm);margin:0 0 var(--s6);padding-left:var(--s5)}
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:var(--s3);margin:var(--s3) 0 var(--s5)}
+.sw{border:var(--bw) solid var(--line);border-radius:var(--r-md);overflow:hidden;background:var(--surface);font-size:var(--t-xs)}
+.sw div{height:44px}.sw span{display:block;padding:6px 8px;font-family:var(--font-mono)}
 
-  /* type */
-  --font-ui: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-read: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, "Times New Roman", serif;
-  --t-xs: 11.5px;
-  --t-sm: 13px;
-  --t-base: 14.5px;
-  --t-md: 16px;
-  --t-lg: 19px;
-  --t-xl: 24px;
-  --t-2xl: 31px;
-  --t-3xl: 42px;
-  --lh-tight: 1.22;
-  --lh-ui: 1.45;
-  --lh-read: 1.62;
+/* mockup frame */
+.mock{border:var(--bw) solid var(--line-strong);border-radius:var(--r-lg);background:var(--paper);box-shadow:var(--e2);margin:var(--s4) 0 var(--s6);overflow:hidden}
+.mock__bar{display:flex;align-items:center;gap:var(--s2);padding:6px var(--s3);background:var(--surface-sunk);border-bottom:var(--bw) solid var(--line);font-size:var(--t-xs);color:var(--ink-50);font-family:var(--font-mono)}
+.mock__bar i{width:9px;height:9px;border-radius:50%;background:var(--line-strong);display:inline-block}
+.mock__body{padding:var(--s4);overflow:auto}
+.mock--phone{max-width:390px}
+.cap{font-size:var(--t-sm);color:var(--ink-50);margin:calc(-1 * var(--s4)) 0 var(--s5)}
 
-  /* space (4px base) */
-  --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
-  --s5: 20px; --s6: 24px; --s7: 32px; --s8: 40px;
-  --s9: 56px; --s10: 80px;
-
-  /* border + elevation */
-  --r-sm: 5px; --r-md: 9px; --r-lg: 14px; --r-pill: 999px;
-  --bw: 1px;
-  --e1: 0 1px 2px rgba(23,32,28,.06);
-  --e2: 0 2px 6px rgba(23,32,28,.07), 0 1px 2px rgba(23,32,28,.05);
-  --e3: 0 14px 34px rgba(23,32,28,.14), 0 3px 10px rgba(23,32,28,.07);
-  --focus: 0 0 0 2px var(--surface), 0 0 0 4px var(--trail);
-
-  --rail-w: 216px;
-  --list-w: 292px;
-  --read-w: 68ch;
-  --dur: 160ms;
-}
-@media (prefers-reduced-motion: reduce){
-  :root{ --dur: 0ms; }
-  *,*::before,*::after{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; scroll-behavior:auto !important; }
-}
-
-/* ==========================================================================
-   2. BASE
-   ========================================================================== */
-*,*::before,*::after{ box-sizing:border-box; }
-html,body{ height:100%; }
-body{
-  margin:0; background:var(--paper); color:var(--ink);
-  font-family:var(--font-ui); font-size:var(--t-base); line-height:var(--lh-ui);
-  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
-}
-h1,h2,h3,h4,p,ul,ol,figure{ margin:0; }
-ul,ol{ padding:0; list-style:none; }
-button,input,textarea,select{ font:inherit; color:inherit; }
-button{ cursor:pointer; background:none; border:none; padding:0; }
-a{ color:var(--trail-deep); text-underline-offset:2px; }
-:focus{ outline:none; }
-:focus-visible{ box-shadow:var(--focus); border-radius:var(--r-sm); }
-.skip{
-  position:absolute; left:var(--s3); top:-60px; z-index:200;
-  background:var(--ink); color:#fff; padding:var(--s2) var(--s4);
-  border-radius:var(--r-sm); transition:top var(--dur);
-}
-.skip:focus{ top:var(--s3); }
-.sr{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
-
-/* ==========================================================================
-   3. PRIMITIVES — buttons, fields, pills, cards
-   ========================================================================== */
-.btn{
-  display:inline-flex; align-items:center; justify-content:center; gap:var(--s2);
-  padding:9px var(--s4); border-radius:var(--r-md); border:var(--bw) solid transparent;
-  font-size:var(--t-base); font-weight:520; letter-spacing:.005em;
-  transition:background var(--dur), border-color var(--dur), color var(--dur), box-shadow var(--dur);
-  white-space:nowrap;
-}
-.btn svg{ flex:none; }
-.btn--primary{ background:var(--trail); color:#fff; box-shadow:var(--e1); }
-.btn--primary:hover{ background:var(--trail-deep); }
-.btn--secondary{ background:var(--surface); color:var(--ink); border-color:var(--line-strong); }
-.btn--secondary:hover{ background:var(--surface-2); border-color:var(--ink-30); }
-.btn--ghost{ color:var(--ink-70); }
-.btn--ghost:hover{ background:var(--surface-sunk); color:var(--ink); }
-.btn--danger{ background:var(--surface); color:var(--danger); border-color:#E4C6C1; }
-.btn--danger:hover{ background:var(--danger-soft); }
-.btn--sm{ padding:6px var(--s3); font-size:var(--t-sm); border-radius:var(--r-sm); }
-.btn--lg{ padding:12px var(--s5); font-size:var(--t-md); }
-.btn--block{ width:100%; }
-.btn[disabled], .btn[aria-disabled="true"]{ opacity:.45; cursor:not-allowed; box-shadow:none; }
-.btn[disabled]:hover, .btn[aria-disabled="true"]:hover{ background:inherit; }
-.btn--primary[disabled]:hover{ background:var(--trail); }
-
-.field{ display:block; }
-.field__label{ display:block; font-size:var(--t-sm); font-weight:560; color:var(--ink-70); margin-bottom:6px; }
-.field__hint{ font-size:var(--t-xs); color:var(--ink-50); margin-top:5px; }
-.input, .textarea, .select{
-  width:100%; background:var(--surface); border:var(--bw) solid var(--line-strong);
-  border-radius:var(--r-md); padding:10px var(--s3); color:var(--ink);
-  transition:border-color var(--dur), box-shadow var(--dur);
-}
-.input::placeholder, .textarea::placeholder{ color:var(--ink-30); }
-.input:hover, .textarea:hover, .select:hover{ border-color:var(--ink-30); }
-.input:focus-visible, .textarea:focus-visible, .select:focus-visible{ border-color:var(--trail); box-shadow:var(--focus); }
-.textarea{ resize:vertical; min-height:96px; }
-.select{
-  appearance:none; padding-right:30px; cursor:pointer;
-  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%23626B65' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
-  background-repeat:no-repeat; background-position:right 10px center;
-}
-.field--error .input, .field--error .textarea{ border-color:var(--danger); }
-.field__error{ display:flex; gap:6px; align-items:center; font-size:var(--t-xs); color:var(--danger); margin-top:5px; font-weight:520; }
-
-.pill{
-  display:inline-flex; align-items:center; gap:5px;
-  padding:2px 9px; border-radius:var(--r-pill); font-size:var(--t-xs);
-  font-weight:560; border:var(--bw) solid transparent; letter-spacing:.01em;
-}
-.pill--model{ background:var(--surface-sunk); color:var(--ink-70); border-color:var(--line); }
-.pill--confirmed{ background:var(--trail-soft); color:var(--trail-deep); border-color:#C4DED2; }
-.pill--draft{ background:var(--blaze-soft); color:var(--blaze); border-color:#E8D3B6; }
-.pill--web{ background:var(--web-soft); color:var(--web); border-color:#C9D6E7; }
-.pill--quiet{ background:var(--surface-2); color:var(--ink-50); border-color:var(--line); }
-
-.notice{
-  display:flex; gap:var(--s3); padding:var(--s3) var(--s4);
-  border-radius:var(--r-md); border:var(--bw) solid; font-size:var(--t-sm); line-height:1.5;
-}
-.notice svg{ flex:none; margin-top:1px; }
-.notice--info{ background:var(--surface-2); border-color:var(--line); color:var(--ink-70); }
-.notice--error{ background:var(--danger-soft); border-color:#E4C6C1; color:var(--danger); }
-.notice--ok{ background:var(--trail-soft); border-color:#C4DED2; color:var(--trail-deep); }
-
-/* signature motif: contour lines, used only twice (entry hero, empty library) */
-.contour{ position:absolute; inset:0; pointer-events:none; overflow:hidden; }
-.contour svg{ width:100%; height:100%; }
-
-/* ==========================================================================
-   4. APP SHELL
-   ========================================================================== */
-#app{ min-height:100dvh; display:flex; flex-direction:column; }
-
-.demobar{
-  display:flex; align-items:center; gap:var(--s3); flex:none;
-  background:var(--ink); color:#E7EBE7; padding:6px var(--s4);
-  font-size:var(--t-xs); letter-spacing:.01em;
-}
-.demobar__dot{ width:6px; height:6px; border-radius:50%; background:#E2A33F; flex:none; }
-.demobar__text{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.demobar__btn{
-  color:#fff; font-size:var(--t-xs); font-weight:560; padding:3px 10px;
-  border:1px solid rgba(255,255,255,.32); border-radius:var(--r-pill); flex:none;
-}
-.demobar__btn:hover{ background:rgba(255,255,255,.12); }
-.demobar__btn:focus-visible{ box-shadow:0 0 0 2px var(--ink), 0 0 0 4px #fff; }
-
-.shell{ flex:1; display:flex; min-height:0; }
-
-/* left rail (desktop) */
-.rail{
-  width:var(--rail-w); flex:none; background:var(--surface); border-right:var(--bw) solid var(--line);
-  display:flex; flex-direction:column; padding:var(--s5) var(--s3) var(--s4);
-}
-.brand{ display:flex; align-items:center; gap:var(--s2); padding:0 var(--s2) var(--s6); }
-.brand__mark{ flex:none; }
-.brand__name{ font-size:var(--t-md); font-weight:620; letter-spacing:-.01em; }
-.nav{ display:flex; flex-direction:column; gap:2px; }
-.nav__item{
-  display:flex; align-items:center; gap:var(--s3); padding:9px var(--s3);
-  border-radius:var(--r-md); color:var(--ink-70); font-weight:520; text-align:left; width:100%;
-  transition:background var(--dur), color var(--dur);
-}
-.nav__item:hover{ background:var(--surface-2); color:var(--ink); }
-.nav__item[aria-current="page"]{ background:var(--trail-soft); color:var(--trail-deep); font-weight:600; }
-.nav__item[aria-current="page"] svg{ color:var(--trail); }
-.nav__count{ margin-left:auto; font-size:var(--t-xs); color:var(--ink-50); font-variant-numeric:tabular-nums; }
-.rail__foot{ margin-top:auto; padding-top:var(--s4); border-top:var(--bw) solid var(--line); }
-.who{ display:flex; align-items:center; gap:var(--s3); padding:var(--s2); }
-.avatar{
-  width:30px; height:30px; border-radius:50%; flex:none; display:grid; place-items:center;
-  background:var(--trail-soft); color:var(--trail-deep); font-size:var(--t-xs); font-weight:640;
-  border:var(--bw) solid #C4DED2;
-}
-.who__name{ font-size:var(--t-sm); font-weight:560; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.who__mail{ font-size:var(--t-xs); color:var(--ink-50); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-
-.main{ flex:1; min-width:0; display:flex; flex-direction:column; }
-.tabbar{ display:none; }
-
-/* ==========================================================================
-   5. ENTRY (landing + auth)
-   ========================================================================== */
-.entry{ flex:1; display:flex; min-height:0; }
-.entry__pitch{
-  position:relative; flex:1.15; min-width:0; padding:var(--s10) var(--s9);
-  display:flex; flex-direction:column; justify-content:center; overflow:hidden;
-  background:linear-gradient(178deg,#EDF0EA 0%, #E6EAE2 100%);
-  border-right:var(--bw) solid var(--line);
-}
-.entry__inner{ position:relative; max-width:41ch; }
-.entry__brand{ display:flex; align-items:center; gap:var(--s2); margin-bottom:var(--s7); }
-.entry h1{
-  font-family:var(--font-read); font-size:var(--t-3xl); line-height:1.06;
-  letter-spacing:-.022em; font-weight:600; margin-bottom:var(--s4);
-}
-.entry__lede{ font-size:var(--t-md); color:var(--ink-70); line-height:1.55; margin-bottom:var(--s7); max-width:38ch; }
-.trailsteps{ display:flex; flex-direction:column; gap:0; margin-bottom:var(--s7); }
-.trailstep{ display:flex; gap:var(--s4); align-items:flex-start; }
-.trailstep__gutter{ display:flex; flex-direction:column; align-items:center; align-self:stretch; }
-.trailstep__blaze{
-  width:11px; height:15px; border-radius:2px; background:var(--trail); flex:none; margin-top:5px;
-}
-.trailstep:nth-child(2) .trailstep__blaze{ background:var(--blaze); }
-.trailstep:nth-child(3) .trailstep__blaze{ background:var(--trail); }
-.trailstep__line{ width:1.5px; flex:1; background:var(--line-strong); margin:5px 0; }
-.trailstep:last-child .trailstep__line{ display:none; }
-.trailstep__body{ padding-bottom:var(--s5); }
-.trailstep__t{ font-weight:600; margin-bottom:2px; }
-.trailstep__d{ font-size:var(--t-sm); color:var(--ink-50); max-width:36ch; }
-.entry__note{ font-size:var(--t-xs); color:var(--ink-50); max-width:44ch; }
-
-.entry__panel{
-  flex:.85; min-width:0; background:var(--surface); padding:var(--s9) var(--s8);
-  display:flex; flex-direction:column; justify-content:center; overflow-y:auto;
-}
-.authbox{ width:100%; max-width:360px; margin:0 auto; }
-.authbox h2{ font-size:var(--t-xl); letter-spacing:-.015em; margin-bottom:6px; }
-.authbox__sub{ font-size:var(--t-sm); color:var(--ink-50); margin-bottom:var(--s6); }
-.segmented{
-  display:flex; background:var(--surface-sunk); border-radius:var(--r-md); padding:3px; margin-bottom:var(--s6);
-}
-.segmented button{
-  flex:1; padding:7px; border-radius:6px; font-size:var(--t-sm); font-weight:560; color:var(--ink-50);
-  transition:background var(--dur), color var(--dur);
-}
-.segmented button[aria-selected="true"]{ background:var(--surface); color:var(--ink); box-shadow:var(--e1); }
-.authform{ display:flex; flex-direction:column; gap:var(--s4); }
-.authbox__or{ display:flex; align-items:center; gap:var(--s3); margin:var(--s6) 0; color:var(--ink-30); font-size:var(--t-xs); }
-.authbox__or::before, .authbox__or::after{ content:""; height:1px; flex:1; background:var(--line); }
-
-/* ==========================================================================
-   6. CHAT WORKSPACE
-   ========================================================================== */
-.work{ flex:1; display:flex; min-height:0; }
-
-.convlist{
-  width:var(--list-w); flex:none; border-right:var(--bw) solid var(--line);
-  background:var(--surface-2); display:flex; flex-direction:column; min-height:0;
-}
-.convlist__head{ padding:var(--s4); border-bottom:var(--bw) solid var(--line); display:flex; flex-direction:column; gap:var(--s3); }
-.convlist__title{ font-size:var(--t-sm); font-weight:620; color:var(--ink-70); }
-.convlist__scroll{ overflow-y:auto; padding:var(--s3); flex:1; }
-.convitem{
-  display:block; width:100%; text-align:left; padding:var(--s3); border-radius:var(--r-md);
-  border:var(--bw) solid transparent; margin-bottom:2px; transition:background var(--dur), border-color var(--dur);
-}
-.convitem:hover{ background:var(--surface); border-color:var(--line); }
-.convitem[aria-current="true"]{ background:var(--surface); border-color:var(--line-strong); box-shadow:var(--e1); }
-.convitem__t{ font-weight:560; font-size:var(--t-base); line-height:1.35; margin-bottom:3px; }
-.convitem__m{ display:flex; align-items:center; gap:var(--s2); font-size:var(--t-xs); color:var(--ink-50); }
-.convitem__saved{ display:inline-flex; align-items:center; gap:3px; color:var(--trail-deep); font-weight:560; }
-
-.thread{ flex:1; min-width:0; display:flex; flex-direction:column; background:var(--paper); min-height:0; }
-.thread__head{
-  flex:none; padding:var(--s4) var(--s6); background:var(--surface);
-  border-bottom:var(--bw) solid var(--line); display:flex; align-items:center; gap:var(--s4);
-}
-.thread__titlewrap{ min-width:0; flex:1; }
-.thread__title{ font-size:var(--t-md); font-weight:600; letter-spacing:-.01em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.thread__meta{ font-size:var(--t-xs); color:var(--ink-50); margin-top:2px; }
-.thread__actions{ display:flex; gap:var(--s2); flex:none; }
-
-.stream{ flex:1; overflow-y:auto; padding:var(--s7) var(--s6) var(--s6); }
-.stream__inner{ max-width:var(--read-w); margin:0 auto; }
-
-.msg{ margin-bottom:var(--s7); }
-.msg__head{ display:flex; align-items:center; gap:var(--s2); margin-bottom:var(--s3); }
-.msg__who{ font-size:var(--t-sm); font-weight:620; }
-.msg--user .msg__who{ color:var(--ink); }
-.msg--ai .msg__who{ color:var(--trail-deep); }
-.msg__time{ font-size:var(--t-xs); color:var(--ink-30); }
-.msg__body{ font-family:var(--font-read); font-size:var(--t-md); line-height:var(--lh-read); color:var(--ink); }
-.msg__body p{ margin-bottom:var(--s4); }
-.msg__body p:last-child{ margin-bottom:0; }
-.msg__body ul{ margin:0 0 var(--s4); padding-left:var(--s5); list-style:disc; }
-.msg__body li{ margin-bottom:6px; }
-.msg--user .msg__body{
-  background:var(--surface); border:var(--bw) solid var(--line); border-left:3px solid var(--ink-30);
-  padding:var(--s4) var(--s5); border-radius:var(--r-md); font-size:var(--t-base);
-}
-.cite{
-  display:inline-flex; align-items:center; justify-content:center; min-width:17px; height:17px;
-  padding:0 4px; margin:0 1px; vertical-align:2px;
-  background:var(--web-soft); color:var(--web); border:var(--bw) solid #C9D6E7;
-  border-radius:4px; font-family:var(--font-ui); font-size:10.5px; font-weight:640;
-  font-variant-numeric:tabular-nums; transition:background var(--dur);
-}
-.cite:hover{ background:#D5E0EF; }
-.msg__sources{ margin-top:var(--s4); display:flex; align-items:center; gap:var(--s3); flex-wrap:wrap; }
-.srcbtn{
-  display:inline-flex; align-items:center; gap:6px; padding:5px 11px; border-radius:var(--r-pill);
-  border:var(--bw) solid #C9D6E7; background:var(--web-soft); color:var(--web);
-  font-size:var(--t-xs); font-weight:560;
-}
-.srcbtn:hover{ background:#D5E0EF; }
-.msg__tools{ margin-top:var(--s3); display:flex; gap:var(--s2); align-items:center; }
-
-.searching{
-  display:flex; align-items:center; gap:var(--s3); padding:var(--s3) var(--s4);
-  background:var(--web-soft); border:var(--bw) solid #C9D6E7; border-radius:var(--r-md);
-  font-size:var(--t-sm); color:var(--web); margin-bottom:var(--s4);
-}
-.searching__steps{ font-variant-numeric:tabular-nums; }
-.spinner{
-  width:13px; height:13px; border-radius:50%; flex:none;
-  border:2px solid currentColor; border-right-color:transparent; animation:spin .7s linear infinite;
-}
-@keyframes spin{ to{ transform:rotate(360deg); } }
-.caret{
-  display:inline-block; width:7px; height:15px; background:var(--trail); vertical-align:-2px;
-  margin-left:2px; animation:blink 1.05s steps(2,start) infinite;
-}
-@keyframes blink{ 50%{ opacity:0; } }
-
-.starter{ max-width:var(--read-w); margin:0 auto; padding:var(--s8) 0; }
-.starter h2{ font-family:var(--font-read); font-size:var(--t-2xl); letter-spacing:-.018em; margin-bottom:var(--s3); }
-.starter__p{ color:var(--ink-70); margin-bottom:var(--s7); max-width:52ch; line-height:1.55; }
-.chips{ display:flex; flex-wrap:wrap; gap:var(--s2); }
-.chip{
-  padding:8px var(--s4); border-radius:var(--r-pill); border:var(--bw) solid var(--line-strong);
-  background:var(--surface); font-size:var(--t-sm); text-align:left; transition:border-color var(--dur), background var(--dur);
-}
-.chip:hover{ border-color:var(--trail); background:var(--trail-soft); }
-
-.composer{ flex:none; padding:var(--s4) var(--s6) var(--s5); background:var(--paper); border-top:var(--bw) solid var(--line); }
-.composer__inner{ max-width:var(--read-w); margin:0 auto; }
-.composer__box{
-  background:var(--surface); border:var(--bw) solid var(--line-strong); border-radius:var(--r-lg);
-  box-shadow:var(--e2); transition:border-color var(--dur), box-shadow var(--dur);
-}
-.composer__box:focus-within{ border-color:var(--trail); box-shadow:var(--e2), 0 0 0 3px rgba(31,107,84,.14); }
-.composer__ta{
-  width:100%; border:none; background:none; padding:var(--s4) var(--s4) var(--s2);
-  resize:none; max-height:200px; min-height:52px; font-size:var(--t-md); line-height:1.5;
-}
-.composer__ta:focus-visible{ box-shadow:none; }
-.composer__bar{ display:flex; align-items:center; gap:var(--s3); padding:0 var(--s3) var(--s3); }
-.modelpick{ display:flex; align-items:center; gap:var(--s2); min-width:0; }
-.modelpick__label{ font-size:var(--t-xs); color:var(--ink-50); white-space:nowrap; }
-.modelpick .select{ padding:5px 28px 5px 10px; font-size:var(--t-sm); border-radius:var(--r-sm); width:auto; background-color:var(--surface-2); }
-.composer__right{ margin-left:auto; display:flex; align-items:center; gap:var(--s2); }
-.sendbtn{
-  width:36px; height:36px; border-radius:var(--r-md); background:var(--trail); color:#fff;
-  display:grid; place-items:center; transition:background var(--dur), opacity var(--dur);
-}
-.sendbtn:hover{ background:var(--trail-deep); }
-.sendbtn[disabled]{ opacity:.35; cursor:not-allowed; }
-.composer__hint{ font-size:var(--t-xs); color:var(--ink-30); margin-top:var(--s2); text-align:center; }
-
-/* ==========================================================================
-   7. DRAWER / SHEET / DIALOG
-   ========================================================================== */
-.scrim{ position:fixed; inset:0; background:rgba(23,32,28,.34); z-index:60; animation:fade var(--dur) ease-out; }
-@keyframes fade{ from{ opacity:0; } }
-.drawer{
-  position:fixed; top:0; right:0; bottom:0; width:min(430px,100vw); z-index:61;
-  background:var(--surface); border-left:var(--bw) solid var(--line); box-shadow:var(--e3);
-  display:flex; flex-direction:column; animation:slidein var(--dur) ease-out;
-}
-@keyframes slidein{ from{ transform:translateX(14px); opacity:.7; } }
-.drawer__head{
-  flex:none; padding:var(--s4) var(--s5); border-bottom:var(--bw) solid var(--line);
-  display:flex; align-items:flex-start; gap:var(--s3);
-}
-.drawer__title{ font-size:var(--t-md); font-weight:620; }
-.drawer__sub{ font-size:var(--t-xs); color:var(--ink-50); margin-top:2px; }
-.iconbtn{
-  width:30px; height:30px; border-radius:var(--r-sm); display:grid; place-items:center;
-  color:var(--ink-50); flex:none; transition:background var(--dur), color var(--dur);
-}
-.iconbtn:hover{ background:var(--surface-sunk); color:var(--ink); }
-.drawer__body{ overflow-y:auto; padding:var(--s5); flex:1; }
-.drawer__foot{ flex:none; padding:var(--s4) var(--s5); border-top:var(--bw) solid var(--line); background:var(--surface-2); }
-
-.source{ padding:var(--s4); border:var(--bw) solid var(--line); border-radius:var(--r-md); margin-bottom:var(--s3); background:var(--surface); }
-.source--target{ border-color:var(--web); box-shadow:0 0 0 3px var(--web-soft); }
-.source__n{
-  display:inline-flex; align-items:center; justify-content:center; width:19px; height:19px;
-  background:var(--web-soft); color:var(--web); border:var(--bw) solid #C9D6E7; border-radius:4px;
-  font-size:11px; font-weight:640; margin-bottom:var(--s2);
-}
-.source__t{ font-weight:600; line-height:1.35; margin-bottom:4px; }
-.source__site{ font-size:var(--t-xs); color:var(--ink-50); margin-bottom:var(--s3); }
-.source__q{
-  font-family:var(--font-read); font-size:var(--t-base); line-height:1.55; color:var(--ink-70);
-  border-left:2px solid var(--line-strong); padding-left:var(--s3); margin-bottom:var(--s3);
-}
-.source__link{ display:inline-flex; align-items:center; gap:6px; font-size:var(--t-sm); font-weight:560; }
-
-.dialog{
-  position:fixed; z-index:61; left:50%; top:50%; transform:translate(-50%,-50%);
-  width:min(460px, calc(100vw - 32px)); max-height:min(84dvh, 720px); overflow-y:auto;
-  background:var(--surface); border-radius:var(--r-lg); box-shadow:var(--e3); padding:var(--s6);
-}
-.dialog h2{ font-size:var(--t-lg); letter-spacing:-.012em; margin-bottom:var(--s2); }
-.dialog__p{ font-size:var(--t-sm); color:var(--ink-70); line-height:1.55; margin-bottom:var(--s5); }
-.dialog__actions{ display:flex; gap:var(--s2); justify-content:flex-end; margin-top:var(--s6); flex-wrap:wrap; }
-.demorow{
-  display:flex; align-items:center; gap:var(--s4); padding:var(--s3) 0; border-top:var(--bw) solid var(--line);
-}
-.demorow__body{ flex:1; min-width:0; }
-.demorow__t{ font-size:var(--t-sm); font-weight:560; }
-.demorow__d{ font-size:var(--t-xs); color:var(--ink-50); }
-
-/* toasts */
-.toasts{ position:fixed; z-index:80; bottom:var(--s5); left:50%; transform:translateX(-50%); display:flex; flex-direction:column; gap:var(--s2); width:min(440px, calc(100vw - 24px)); pointer-events:none; }
-.toast{
-  display:flex; align-items:center; gap:var(--s3); padding:var(--s3) var(--s4);
-  background:var(--ink); color:#F2F4F1; border-radius:var(--r-md); box-shadow:var(--e3);
-  font-size:var(--t-sm); pointer-events:auto; animation:toastin var(--dur) ease-out;
-}
-@keyframes toastin{ from{ transform:translateY(8px); opacity:0; } }
-.toast__ok{ color:#8FD3B6; flex:none; }
-.toast__err{ color:#F0A79E; flex:none; }
-
-/* ==========================================================================
-   8. SUMMARY REVIEW
-   ========================================================================== */
-.review{ flex:1; display:flex; min-height:0; }
-.review__ref{
-  width:44%; max-width:560px; flex:none; border-right:var(--bw) solid var(--line);
-  background:var(--surface-2); display:flex; flex-direction:column; min-height:0;
-}
-.review__refhead{ flex:none; padding:var(--s4) var(--s5); border-bottom:var(--bw) solid var(--line); }
-.review__refscroll{ overflow-y:auto; padding:var(--s5); flex:1; }
-.review__refscroll .msg{ margin-bottom:var(--s5); }
-.review__refscroll .msg__body{ font-size:var(--t-base); }
-.review__edit{ flex:1; min-width:0; display:flex; flex-direction:column; background:var(--paper); min-height:0; }
-.review__head{ flex:none; padding:var(--s5) var(--s6) var(--s4); background:var(--surface); border-bottom:var(--bw) solid var(--line); }
-.review__eyebrow{ display:flex; align-items:center; gap:var(--s2); margin-bottom:var(--s2); }
-.review__h{ font-family:var(--font-read); font-size:var(--t-xl); letter-spacing:-.015em; }
-.review__scroll{ flex:1; overflow-y:auto; padding:var(--s6); }
-.review__form{ max-width:66ch; margin:0 auto; display:flex; flex-direction:column; gap:var(--s5); }
-.review__ta{
-  min-height:400px; font-family:var(--font-read); font-size:var(--t-md); line-height:var(--lh-read);
-  padding:var(--s5); background:var(--surface);
-}
-.review__foot{
-  flex:none; padding:var(--s4) var(--s6); background:var(--surface); border-top:var(--bw) solid var(--line);
-  display:flex; align-items:center; gap:var(--s3); flex-wrap:wrap;
-}
-.review__footnote{ font-size:var(--t-xs); color:var(--ink-50); flex:1; min-width:180px; }
-.review__tabs{ display:none; }
-
-.gen{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:var(--s4); padding:var(--s10) var(--s5); text-align:center; }
-.gen__steps{ font-size:var(--t-sm); color:var(--ink-50); }
-
-/* ==========================================================================
-   9. LIBRARY + DETAIL
-   ========================================================================== */
-.page{ flex:1; overflow-y:auto; }
-.page__head{ background:var(--surface); border-bottom:var(--bw) solid var(--line); padding:var(--s7) var(--s7) var(--s5); }
-.page__inner{ max-width:1040px; margin:0 auto; }
-.page__title{ font-family:var(--font-read); font-size:var(--t-2xl); letter-spacing:-.02em; margin-bottom:6px; }
-.page__sub{ color:var(--ink-50); font-size:var(--t-base); max-width:60ch; }
-.page__body{ padding:var(--s6) var(--s7) var(--s10); }
-
-.searchrow{ display:flex; gap:var(--s3); align-items:center; margin-top:var(--s5); flex-wrap:wrap; }
-.searchwrap{ position:relative; flex:1; min-width:220px; max-width:420px; }
-.searchwrap svg{ position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--ink-30); pointer-events:none; }
-.searchwrap .input{ padding-left:34px; }
-.resultcount{ font-size:var(--t-sm); color:var(--ink-50); }
-
-.grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(300px,1fr)); gap:var(--s4); }
-.entrycard{
-  display:flex; flex-direction:column; text-align:left; padding:var(--s5);
-  background:var(--surface); border:var(--bw) solid var(--line); border-left:3px solid var(--trail);
-  border-radius:var(--r-md); box-shadow:var(--e1);
-  transition:box-shadow var(--dur), border-color var(--dur), transform var(--dur);
-}
-.entrycard:hover{ box-shadow:var(--e2); border-color:var(--line-strong); border-left-color:var(--trail); }
-.entrycard--new{ box-shadow:0 0 0 3px var(--trail-soft), var(--e2); }
-.entrycard__top{ display:flex; align-items:center; gap:var(--s2); margin-bottom:var(--s3); flex-wrap:wrap; }
-.entrycard__t{ font-family:var(--font-read); font-size:var(--t-lg); line-height:1.25; letter-spacing:-.012em; margin-bottom:var(--s2); }
-.entrycard__p{ font-size:var(--t-sm); color:var(--ink-70); line-height:1.55; margin-bottom:var(--s4); }
-.entrycard__foot{ margin-top:auto; display:flex; align-items:center; gap:var(--s3); font-size:var(--t-xs); color:var(--ink-50); flex-wrap:wrap; }
-
-.empty{ position:relative; overflow:hidden; text-align:center; padding:var(--s10) var(--s5); border:var(--bw) dashed var(--line-strong); border-radius:var(--r-lg); background:var(--surface-2); }
-.empty__inner{ position:relative; max-width:46ch; margin:0 auto; }
-.empty h3{ font-family:var(--font-read); font-size:var(--t-xl); letter-spacing:-.015em; margin-bottom:var(--s3); }
-.empty p{ color:var(--ink-70); margin-bottom:var(--s5); line-height:1.55; }
-
-.doc{ max-width:var(--read-w); margin:0 auto; }
-.doc__meta{ display:flex; align-items:center; gap:var(--s3); flex-wrap:wrap; font-size:var(--t-xs); color:var(--ink-50); margin-bottom:var(--s5); }
-.doc__body{ font-family:var(--font-read); font-size:var(--t-md); line-height:var(--lh-read); }
-.doc__body h3{
-  font-family:var(--font-ui); font-size:var(--t-sm); font-weight:640; color:var(--ink-50);
-  letter-spacing:.005em; margin:var(--s7) 0 var(--s3); padding-bottom:6px; border-bottom:var(--bw) solid var(--line);
-}
-.doc__body h3:first-child{ margin-top:0; }
-.doc__body p{ margin-bottom:var(--s4); }
-.doc__body ul{ list-style:none; margin-bottom:var(--s4); }
-.doc__body li{ position:relative; padding-left:var(--s5); margin-bottom:var(--s3); }
-.doc__body li::before{ content:""; position:absolute; left:4px; top:.62em; width:6px; height:6px; border-radius:1px; background:var(--trail); }
-.doc__sources{ margin-top:var(--s7); padding-top:var(--s5); border-top:var(--bw) solid var(--line); }
-.doc__sources h3{ font-size:var(--t-sm); font-weight:640; color:var(--ink-50); margin-bottom:var(--s3); }
-.doc__srclist li{ margin-bottom:var(--s2); font-size:var(--t-sm); }
-
-/* ==========================================================================
-   10. ASK MY KNOWLEDGE
-   ========================================================================== */
-.ask{ max-width:var(--read-w); margin:0 auto; }
-.askbox{ background:var(--surface); border:var(--bw) solid var(--line-strong); border-radius:var(--r-lg); padding:var(--s4); box-shadow:var(--e2); }
-.askbox:focus-within{ border-color:var(--trail); }
-.askbox__row{ display:flex; gap:var(--s3); align-items:flex-end; }
-.askbox__ta{ flex:1; border:none; background:none; resize:none; min-height:44px; max-height:150px; font-size:var(--t-md); padding:var(--s2); }
-.askbox__ta:focus-visible{ box-shadow:none; }
-.askscope{
-  display:flex; align-items:center; gap:6px; font-size:var(--t-xs); color:var(--ink-50);
-  padding:var(--s3) 0 0; border-top:var(--bw) solid var(--line); margin-top:var(--s3);
-}
-
-.answer{ margin-top:var(--s6); }
-.answer__head{ display:flex; align-items:center; gap:var(--s3); flex-wrap:wrap; margin-bottom:var(--s4); }
-.coverage{
-  display:inline-flex; align-items:center; gap:6px; padding:4px 11px; border-radius:var(--r-pill);
-  font-size:var(--t-xs); font-weight:600; border:var(--bw) solid;
-}
-.coverage--full{ background:var(--trail-soft); color:var(--trail-deep); border-color:#C4DED2; }
-.coverage--partial{ background:var(--blaze-soft); color:var(--blaze); border-color:#E8D3B6; }
-.coverage--none{ background:var(--surface-sunk); color:var(--ink-70); border-color:var(--line-strong); }
-
-.answercard{
-  background:var(--surface); border:var(--bw) solid var(--line); border-left:3px solid var(--trail);
-  border-radius:var(--r-md); padding:var(--s6); box-shadow:var(--e1);
-}
-.answercard--partial{ border-left-color:var(--blaze); }
-.answercard--none{ border-left-color:var(--ink-30); }
-.answercard__q{ font-size:var(--t-sm); color:var(--ink-50); margin-bottom:var(--s4); padding-bottom:var(--s4); border-bottom:var(--bw) solid var(--line); }
-.answercard__body{ font-family:var(--font-read); font-size:var(--t-md); line-height:var(--lh-read); }
-.answercard__body p{ margin-bottom:var(--s4); }
-.answercard__body p:last-child{ margin-bottom:0; }
-.kcite{
-  display:inline-flex; align-items:center; gap:4px; padding:1px 7px; margin:0 1px;
-  background:var(--trail-soft); color:var(--trail-deep); border:var(--bw) solid #C4DED2;
-  border-radius:var(--r-pill); font-family:var(--font-ui); font-size:var(--t-xs); font-weight:560; vertical-align:1px;
-}
-.kcite:hover{ background:#D3E6DD; }
-.gaps{ margin-top:var(--s5); padding:var(--s4); background:var(--blaze-soft); border:var(--bw) solid #E8D3B6; border-radius:var(--r-md); }
-.gaps__t{ display:flex; align-items:center; gap:var(--s2); font-size:var(--t-sm); font-weight:620; color:#6E4110; margin-bottom:var(--s2); }
-.gaps ul{ list-style:none; }
-.gaps li{ position:relative; padding-left:var(--s4); font-size:var(--t-sm); color:#6E4110; line-height:1.5; margin-bottom:5px; }
-.gaps li::before{ content:""; position:absolute; left:2px; top:.6em; width:5px; height:5px; background:var(--blaze); border-radius:1px; }
-.usedlist{ margin-top:var(--s5); padding-top:var(--s4); border-top:var(--bw) solid var(--line); }
-.usedlist__t{ font-size:var(--t-xs); color:var(--ink-50); margin-bottom:var(--s3); font-weight:560; }
-.usedref{
-  display:flex; align-items:center; gap:var(--s3); width:100%; text-align:left; padding:var(--s3);
-  border:var(--bw) solid var(--line); border-radius:var(--r-sm); background:var(--surface-2); margin-bottom:var(--s2);
-  transition:border-color var(--dur), background var(--dur);
-}
-.usedref:hover{ border-color:var(--trail); background:var(--trail-soft); }
-.usedref__n{
-  display:grid; place-items:center; width:22px; height:22px; flex:none; border-radius:var(--r-pill);
-  background:var(--trail-soft); border:var(--bw) solid #C4DED2; color:var(--trail-deep);
-  font-size:11px; font-weight:640;
-}
-.usedref__t{ font-size:var(--t-sm); font-weight:560; flex:1; min-width:0; }
-.answer__next{ margin-top:var(--s4); display:flex; gap:var(--s2); flex-wrap:wrap; }
-
-.webcard{
-  margin-top:var(--s4); background:var(--web-soft); border:var(--bw) solid #C9D6E7;
-  border-left:3px solid var(--web); border-radius:var(--r-md); padding:var(--s5);
-}
-.webcard__head{ display:flex; align-items:center; gap:var(--s2); margin-bottom:var(--s3); }
-.webcard__t{ font-size:var(--t-sm); font-weight:620; color:var(--web); }
-.webcard__body{ font-family:var(--font-read); font-size:var(--t-base); line-height:1.6; color:var(--ink); margin-bottom:var(--s4); }
-.webcard__note{ font-size:var(--t-xs); color:var(--web); margin-top:var(--s3); display:flex; gap:6px; align-items:flex-start; }
-
-/* ==========================================================================
-   11. RESPONSIVE — 390px target
-   ========================================================================== */
-@media (max-width: 900px){
-  :root{ --read-w:100%; }
-  .entry{ flex-direction:column; }
-  .entry__pitch{ padding:var(--s7) var(--s5) var(--s6); flex:none; border-right:none; border-bottom:var(--bw) solid var(--line); }
-  .entry h1{ font-size:var(--t-2xl); }
-  .entry__panel{ padding:var(--s7) var(--s5) var(--s9); flex:none; }
-  .trailsteps{ margin-bottom:var(--s5); }
-  .trailstep__body{ padding-bottom:var(--s4); }
-
-  .rail{ display:none; }
-  .shell{ flex-direction:column; }
-  .main{ min-height:0; padding-bottom:60px; }
-
-  .tabbar{
-    display:flex; position:fixed; bottom:0; left:0; right:0; z-index:50; background:var(--surface);
-    border-top:var(--bw) solid var(--line); padding:4px 4px calc(4px + env(safe-area-inset-bottom));
-  }
-  .tabbar__item{
-    flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; padding:6px 2px;
-    color:var(--ink-50); font-size:10.5px; font-weight:560; border-radius:var(--r-sm);
-  }
-  .tabbar__item[aria-current="page"]{ color:var(--trail-deep); background:var(--trail-soft); }
-
-  .convlist{ display:none; }
-  .thread__head{ padding:var(--s3) var(--s4); }
-  .thread__actions .btn span{ display:none; }
-  .stream{ padding:var(--s5) var(--s4); }
-  .composer{ padding:var(--s3) var(--s4) var(--s4); }
-  .composer__ta{ font-size:16px; } /* prevents iOS zoom-on-focus */
-  /* visually hidden rather than display:none so the select keeps its accessible name */
-  .modelpick__label{
-    position:absolute; width:1px; height:1px; padding:0; margin:-1px;
-    overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0;
-  }
-
-  .page__head{ padding:var(--s5) var(--s4) var(--s4); }
-  .page__body{ padding:var(--s5) var(--s4) var(--s9); }
-  .page__title{ font-size:var(--t-xl); }
-  .grid{ grid-template-columns:1fr; }
-
-  .review__ref{ display:none; }
-  .review--showref .review__ref{
-    display:flex; width:100%; max-width:none; border-right:none;
-  }
-  .review--showref .review__edit{ display:none; }
-  .review__tabs{
-    display:flex; gap:4px; padding:var(--s3) var(--s4) 0; background:var(--surface); flex:none;
-    border-bottom:var(--bw) solid var(--line);
-  }
-  .review{ flex-direction:column; }
-  .review__tab{
-    flex:1; padding:9px; font-size:var(--t-sm); font-weight:560; color:var(--ink-50);
-    border-bottom:2px solid transparent; border-radius:var(--r-sm) var(--r-sm) 0 0;
-  }
-  .review__tab[aria-selected="true"]{ color:var(--trail-deep); border-bottom-color:var(--trail); }
-  .review__head{ padding:var(--s4); }
-  .review__scroll{ padding:var(--s4); }
-  .review__ta{ min-height:300px; font-size:16px; padding:var(--s4); }
-  .review__foot{ padding:var(--s3) var(--s4); }
-  .review__footnote{ order:3; flex-basis:100%; }
-  .review__foot .btn{ flex:1; }
-
-  .drawer{
-    top:auto; left:0; right:0; bottom:0; width:100%; height:min(78dvh, 620px);
-    border-left:none; border-top:var(--bw) solid var(--line); border-radius:var(--r-lg) var(--r-lg) 0 0;
-    animation:sheetin var(--dur) ease-out;
-  }
-  @keyframes sheetin{ from{ transform:translateY(20px); } }
-  .dialog{ width:calc(100vw - 20px); padding:var(--s5); }
-  .dialog__actions .btn{ flex:1; }
-  .toasts{ bottom:76px; }
-  .answercard{ padding:var(--s4); }
-}
+/* =========================================================================
+   3. PRODUCTION PRIMITIVES (reference implementation of the component rules)
+   ========================================================================= */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--s2);padding:9px var(--s4);border-radius:var(--r-md);border:var(--bw) solid transparent;font:inherit;font-size:var(--t-base);font-weight:520;white-space:nowrap;cursor:default;background:none;color:inherit}
+.btn--primary{background:var(--trail);color:#fff;box-shadow:var(--e1)}
+.btn--secondary{background:var(--surface);border-color:var(--line-strong)}
+.btn--ghost{color:var(--ink-70)}
+.btn--danger{background:var(--surface);color:var(--danger);border-color:#E4C6C1}
+.btn--sm{padding:6px var(--s3);font-size:var(--t-sm);border-radius:var(--r-sm)}
+.btn--block{width:100%}
+.btn[aria-disabled="true"]{opacity:.45}
+.field{display:block;margin-bottom:var(--s4)}
+.field__label{display:block;font-size:var(--t-sm);font-weight:560;color:var(--ink-70);margin-bottom:6px}
+.field__hint{font-size:var(--t-xs);color:var(--ink-50);margin-top:5px}
+.field__error{font-size:var(--t-xs);color:var(--danger);margin-top:5px}
+.input,.textarea{width:100%;background:var(--surface);border:var(--bw) solid var(--line-strong);border-radius:var(--r-md);padding:10px var(--s3);font:inherit;color:var(--ink)}
+.input--invalid{border-color:var(--danger)}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:var(--r-pill);font-size:var(--t-xs);font-weight:560;border:var(--bw) solid transparent}
+.pill--draft{background:var(--blaze-soft);color:var(--blaze)}
+.pill--saved{background:var(--trail-soft);color:var(--trail-deep)}
+.pill--web{background:var(--web-soft);color:var(--web)}
+.pill--muted{background:var(--surface-sunk);color:var(--ink-50)}
+.pill--danger{background:var(--danger-soft);color:var(--danger)}
+.card{background:var(--surface);border:var(--bw) solid var(--line);border-radius:var(--r-lg);padding:var(--s4)}
+.alert{border-radius:var(--r-md);padding:var(--s3) var(--s4);font-size:var(--t-sm);border:var(--bw) solid}
+.alert--error{background:var(--danger-soft);border-color:#E4C6C1;color:var(--danger)}
+.alert--info{background:var(--web-soft);border-color:#C9D5E6;color:var(--web)}
+.alert--success{background:var(--trail-soft);border-color:#BFD9CC;color:var(--trail-deep)}
+.empty{text-align:center;padding:var(--s8) var(--s5);color:var(--ink-50)}
+.empty h4{color:var(--ink);margin:0 0 var(--s2)}
+.msg{max-width:var(--read-w);margin:0 0 var(--s5)}
+.msg__meta{display:flex;gap:var(--s2);align-items:center;font-size:var(--t-xs);color:var(--ink-50);margin-bottom:6px}
+.msg--user .msg__body{background:var(--surface-sunk);border-radius:var(--r-lg);padding:var(--s3) var(--s4)}
+.msg--assistant .msg__body{font-family:var(--font-read);font-size:var(--t-md);line-height:var(--lh-read)}
+.cursor{display:inline-block;width:8px;height:1em;background:var(--trail);vertical-align:text-bottom;border-radius:2px}
+.sources{margin-top:var(--s3);border-left:3px solid var(--web);padding-left:var(--s3);font-size:var(--t-sm)}
+.sources a{color:var(--web)}
+.cite{font-size:var(--t-xs);font-weight:600;color:var(--trail-deep);background:var(--trail-soft);padding:0 5px;border-radius:var(--r-sm)}
+.rail{background:var(--surface);border-right:var(--bw) solid var(--line);padding:var(--s3);font-size:var(--t-sm)}
+.rail a{display:block;padding:7px 10px;border-radius:var(--r-sm);color:var(--ink-70);text-decoration:none}
+.rail a[aria-current]{background:var(--trail-soft);color:var(--trail-deep);font-weight:600}
+.list{background:var(--surface);border-right:var(--bw) solid var(--line);font-size:var(--t-sm)}
+.list__item{padding:10px 12px;border-bottom:var(--bw) solid var(--line)}
+.list__item[aria-current]{background:var(--surface-2)}
+.composer{background:var(--surface);border:var(--bw) solid var(--line-strong);border-radius:var(--r-lg);padding:var(--s3);box-shadow:var(--e1)}
+.composer__row{display:flex;justify-content:space-between;align-items:center;gap:var(--s3);margin-top:var(--s2);font-size:var(--t-sm)}
+.toggle{display:inline-flex;align-items:center;gap:6px;color:var(--ink-70)}
+.toggle i{width:30px;height:16px;border-radius:var(--r-pill);background:var(--line-strong);position:relative;display:inline-block}
+.toggle i::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff}
+.toggle--on i{background:var(--web)}.toggle--on i::after{left:16px}
+.ws{display:grid;grid-template-columns:var(--rail-w) var(--list-w) 1fr;min-height:420px}
+.ws__main{padding:var(--s5);display:flex;flex-direction:column}
+.ws__thread{flex:1}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:var(--s5)}
+.editor{font-family:var(--font-mono);font-size:var(--t-sm);min-height:180px;white-space:pre-wrap}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:var(--s2) 0 var(--s4);border-bottom:var(--bw) solid var(--line);margin-bottom:var(--s4)}
+.tabbar{display:grid;grid-template-columns:repeat(4,1fr);border-top:var(--bw) solid var(--line);background:var(--surface);font-size:var(--t-xs);text-align:center}
+.tabbar span{padding:8px 0;color:var(--ink-50)}.tabbar span[aria-current]{color:var(--trail-deep);font-weight:600}
+.kbd{font-family:var(--font-mono);font-size:var(--t-xs);border:var(--bw) solid var(--line-strong);border-bottom-width:2px;border-radius:var(--r-sm);padding:0 5px;background:var(--surface)}
+@media (max-width:820px){ .ws{grid-template-columns:1fr} .rail,.list{display:none} .split{grid-template-columns:1fr} .toc{columns:1} }
 </style>
 </head>
-
 <body>
-<a class="skip" href="#main">Skip to main content</a>
-<div id="app"></div>
-<div class="toasts" id="toasts" role="status" aria-live="polite" aria-atomic="false"></div>
-<div id="overlay"></div>
+<main>
 
-<script>
-"use strict";
-/* ==========================================================================
-   Nuroli prototype — application script
-   Sections:
-     1  Utilities (escaping, dom, focus, storage)
-     2  Icons
-     3  Demo data (sources, conversations, summaries, canned replies)
-     4  State + persistence
-     5  Simulation engine (streaming, search, summary generation, retrieval)
-     6  Rendering: shell + views
-     7  Overlays (source drawer, dialogs, toasts)
-     8  Event wiring
-     9  Boot
-   All AI, search and auth behaviour below is SIMULATED. Nothing leaves the page.
-   ========================================================================== */
+<h1>Nuroli design specification</h1>
+<p style="font-size:var(--t-md);color:var(--ink-70)">The product experience for the self-hosted v1. Every screen, state, and rule here maps to a decision in <code>ARCHITECTURE.md</code>. Tags: <span class="ref">R-nn</span> confirmed decision.</p>
 
-/* ---------------------------------------------------------------- 1. UTIL */
-const $  = (s, r=document) => r.querySelector(s);
-const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
-const esc = (s='') => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const uid = (p='id') => p + '_' + Math.random().toString(36).slice(2,9);
-const now = () => Date.now();
+<div class="status"><strong>Status:</strong> Phases 1 and 2 complete and approved. Nothing in this file is implemented yet. Mockups are static illustrations of the rules, not pixel contracts; implementers follow the rules and tokens, and use the mockups for structure and hierarchy.</div>
 
-function fmtDate(ts){
-  const d = new Date(ts);
-  return d.toLocaleDateString(undefined,{month:'short', day:'numeric', year:'numeric'});
-}
-function fmtTime(ts){
-  return new Date(ts).toLocaleTimeString(undefined,{hour:'numeric', minute:'2-digit'});
-}
-function relDay(ts){
-  const days = Math.floor((now() - ts) / 86400000);
-  if (days <= 0) return 'Today';
-  if (days === 1) return 'Yesterday';
-  if (days < 7) return days + ' days ago';
-  return fmtDate(ts);
-}
-function isMobile(){
-  /* matchMedia is universal in browsers, but guard so the file cannot hard-fail
-     in any embedding context that lacks it. */
-  if (typeof window.matchMedia === 'function') return window.matchMedia('(max-width: 900px)').matches;
-  return (window.innerWidth || 1440) <= 900;
-}
+<ol class="toc">
+<li><a href="#purpose">Purpose and target users</a></li>
+<li><a href="#principles">Design principles</a></li>
+<li><a href="#tokens">Visual tokens and reusable UI rules</a></li>
+<li><a href="#ia">Navigation and information architecture</a></li>
+<li><a href="#install">Installation, first run, and configuration behavior</a></li>
+<li><a href="#auth">Authentication and registration</a></li>
+<li><a href="#workspace">Conversations: create, continue, stream, stop, retry</a></li>
+<li><a href="#model">The single configured model and future model selection</a></li>
+<li><a href="#research">Web research and source inspection</a></li>
+<li><a href="#summary">Summary generation, review, editing, and confirmation</a></li>
+<li><a href="#library">Saved knowledge library</a></li>
+<li><a href="#ask">Knowledge questions and citations</a></li>
+<li><a href="#account">Account</a></li>
+<li><a href="#states">State catalogue: empty, loading, partial, insufficient, error</a></li>
+<li><a href="#responsive">Responsive behavior</a></li>
+<li><a href="#a11y">Keyboard navigation and accessibility</a></li>
+<li><a href="#copy">Copy rules</a></li>
+</ol>
 
-/* localStorage is an OPPORTUNISTIC MIRROR ONLY (assumption A8).
-   Every access is guarded; failure degrades to memory-only silently. */
-const KEY = 'nuroli.proto.v1';
-const Store = {
-  ok: (() => { try { const k='__lt'; localStorage.setItem(k,'1'); localStorage.removeItem(k); return true; } catch(e){ return false; } })(),
-  read(){ if(!this.ok) return null; try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch(e){ return null; } },
-  write(v){ if(!this.ok) return; try { localStorage.setItem(KEY, JSON.stringify(v)); } catch(e){ /* quota or blocked: ignore */ } },
-  clear(){ if(!this.ok) return; try { localStorage.removeItem(KEY); } catch(e){} }
-};
+<!-- ================================================================== -->
+<h2 id="purpose">1. Purpose and target users</h2>
+<p>Nuroli supports a personal learning loop: ask a model a question, research facts with visible sources, keep going deeper, turn what was worked out into a reviewed summary, keep that summary as knowledge, and ask questions across saved knowledge later. <span class="ref">R-01</span></p>
+<p><strong>Target users.</strong> People who learn by questioning: engineers, researchers, students, and self-taught professionals who want their conclusions kept separately from the messy conversations that produced them. They install Nuroli themselves or use an installation someone runs for a small group. Each user's data is private to them. <span class="ref">R-01</span></p>
+<p><strong>Operator.</strong> The person who installs and configures Nuroli. The operator chooses the model endpoint and search key, and decides whether registration is open. The operator is not a special user inside the product. <span class="ref">R-14</span></p>
+<p><strong>Three kinds of content, always distinguishable.</strong> Conversations (working material, unconfirmed), drafts (unconfirmed summaries, marked in blaze ochre), and saved knowledge (confirmed summaries, marked in trail green). Web evidence is a fourth kind, marked in slate blue and never presented as knowledge. This colour semantics is the backbone of the interface.</p>
 
-/* focus helpers ---------------------------------------------------------- */
-const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
-function trapFocus(container, e){
-  const items = $$(FOCUSABLE, container).filter(el => el.offsetParent !== null || el === document.activeElement);
-  if (!items.length) return;
-  const first = items[0], last = items[items.length-1];
-  if (e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
-  else if (!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
-}
+<!-- ================================================================== -->
+<h2 id="principles">2. Design principles</h2>
+<ol>
+<li><strong>The next useful action is always visible.</strong> A new user sees one composer and one instruction. A returning user sees their last conversation and their library count.</li>
+<li><strong>Nothing is saved as knowledge without the user saying so.</strong> The confirm button is the only path into the library, and it always shows what it will save. <span class="ref">R-18</span></li>
+<li><strong>Work is never lost by navigation.</strong> Composer text and draft edits survive route changes and reloads. Cancel keeps the draft; discard is a separate, labelled action.</li>
+<li><strong>Honest states.</strong> Streaming, stopped, failed, skipped research, and insufficient evidence are each shown with an icon and a word, never colour alone.</li>
+<li><strong>Reading first.</strong> Assistant text uses the reading typeface at 68 characters measure. Controls stay quiet until hovered or focused.</li>
+<li><strong>One model, shown plainly.</strong> The configured model's name appears on every reply and in the composer. No picker exists until multiple models exist. <span class="ref">R-06</span></li>
+</ol>
 
-/* Capture/restore focus + caret + scroll across full re-renders.
-   This is what keeps composer drafts and reading position intact (brief: "preserve
-   draft input and edits during ordinary navigation"). */
-let focusMemo = null, scrollMemo = {};
-function captureUI(){
-  const el = document.activeElement;
-  focusMemo = (el && el.dataset && el.dataset.fk)
-    ? { fk: el.dataset.fk, start: el.selectionStart, end: el.selectionEnd }
-    : null;
-  $$('[data-scroll]').forEach(n => { scrollMemo[n.dataset.scroll] = n.scrollTop; });
-}
-function restoreUI(){
-  $$('[data-scroll]').forEach(n => {
-    const k = n.dataset.scroll;
-    if (k === 'stream' && state.pinStream) { n.scrollTop = n.scrollHeight; return; }
-    if (scrollMemo[k] != null) n.scrollTop = scrollMemo[k];
-  });
-  if (focusMemo){
-    const el = $('[data-fk="'+focusMemo.fk+'"]');
-    if (el){
-      el.focus({preventScroll:true});
-      if (focusMemo.start != null && el.setSelectionRange){
-        try { el.setSelectionRange(focusMemo.start, focusMemo.end); } catch(e){}
-      }
-    }
-  }
-}
+<!-- ================================================================== -->
+<h2 id="tokens">3. Visual tokens and reusable UI rules</h2>
+<p>The token block at the top of this file is the production set. The frontend copies it verbatim into <code>frontend/src/styles/tokens.css</code>. Light theme only in v1; a dark theme is a later addition that must be expressed by redefining these tokens, not by new colour literals.</p>
 
-/* ---------------------------------------------------------------- 2. ICONS */
-const ICONS = {
-  trail:'<path d="M8 21c0-4 3-5 3-8s-3-3-3-6 2-4 2-4"/><circle cx="17" cy="7" r="2.4"/><path d="M17 12.5c0 3.6-2 4.2-2 6.5"/>',
-  chat:'<path d="M20 12.5a7.5 7.5 0 0 1-10.9 6.7L4 20.5l1.4-4.6A7.5 7.5 0 1 1 20 12.5Z"/>',
-  book:'<path d="M4 4.5h6a3 3 0 0 1 3 3v12a2.4 2.4 0 0 0-2.4-2.4H4Z"/><path d="M20 4.5h-4a3 3 0 0 0-3 3v12a2.4 2.4 0 0 1 2.4-2.4H20Z"/>',
-  ask:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/><path d="M9.6 9.2a1.9 1.9 0 1 1 2.6 1.8v1.2"/>',
-  send:'<path d="M4.5 12h13"/><path d="M12 5.5 18.5 12 12 18.5"/>',
-  stop:'<rect x="6.5" y="6.5" width="11" height="11" rx="1.6"/>',
-  retry:'<path d="M19 12a7 7 0 1 1-2.3-5.2"/><path d="M19.5 4v4h-4"/>',
-  close:'<path d="M6 6l12 12M18 6 6 18"/>',
-  check:'<path d="M5 12.5 10 17.5 19 7"/>',
-  checkcircle:'<circle cx="12" cy="12" r="8.5"/><path d="M8.3 12.2l2.6 2.6 4.8-5.2"/>',
-  external:'<path d="M14 5h5v5"/><path d="M19 5l-7.5 7.5"/><path d="M18 14.5V18a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 18V7.5A1.5 1.5 0 0 1 6 6h3.6"/>',
-  globe:'<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17"/><path d="M12 3.5c2.2 2.4 3.3 5.3 3.3 8.5S14.2 18.1 12 20.5c-2.2-2.4-3.3-5.3-3.3-8.5S9.8 5.9 12 3.5Z"/>',
-  spark:'<path d="M12 4.5 13.6 9.4 18.5 11 13.6 12.6 12 17.5 10.4 12.6 5.5 11l4.9-1.6Z"/><path d="M18 16.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7Z"/>',
-  edit:'<path d="M14.8 5.6 18.4 9.2"/><path d="M5 19h3.6l10-10a2.5 2.5 0 0 0-3.6-3.6l-10 10Z"/>',
-  warn:'<path d="M12 4.8 21 19.5H3Z"/><path d="M12 10.5v4"/><path d="M12 17.2v.1"/>',
-  info:'<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5"/><path d="M12 7.8v.1"/>',
-  search:'<circle cx="10.8" cy="10.8" r="6.5"/><path d="M19.5 19.5 15.4 15.4"/>',
-  back:'<path d="M19 12H5.5"/><path d="M11 5.5 4.5 12l6.5 6.5"/>',
-  plus:'<path d="M12 5.5v13M5.5 12h13"/>',
-  list:'<path d="M4.5 7h15M4.5 12h15M4.5 17h9"/>',
-  sliders:'<path d="M5 8h14M5 16h14"/><circle cx="9.5" cy="8" r="2.2"/><circle cx="15" cy="16" r="2.2"/>',
-  logout:'<path d="M15 8V6.5A1.5 1.5 0 0 0 13.5 5h-7A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19h7a1.5 1.5 0 0 0 1.5-1.5V16"/><path d="M10 12h9.5"/><path d="M16.5 8.8 19.7 12l-3.2 3.2"/>',
-  file:'<path d="M13.5 4.5H7A1.5 1.5 0 0 0 5.5 6v12A1.5 1.5 0 0 0 7 19.5h10a1.5 1.5 0 0 0 1.5-1.5V9.5Z"/><path d="M13.5 4.5v5h5"/>'
-};
-function icon(name, size=18, cls=''){
-  return '<svg class="'+cls+'" width="'+size+'" height="'+size+'" viewBox="0 0 24 24" fill="none" '+
-    'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+
-    (ICONS[name]||'')+'</svg>';
-}
-/* signature motif — hand-set contour lines, used sparingly (entry hero, empty library) */
-function contour(op=0.5){
-  let paths = '';
-  for (let i=0;i<7;i++){
-    const y = 40 + i*46, amp = 26 + i*5;
-    paths += '<path d="M-40 '+y+' C 120 '+(y-amp)+', 250 '+(y+amp)+', 420 '+(y-amp*0.6)+
-             ' S 700 '+(y+amp*0.8)+', 900 '+(y-amp*0.3)+'" fill="none" stroke="'+
-             (i%3===2 ? '#B9C4B8' : '#CBD3C8')+'" stroke-width="'+(i%3===2?1.4:1)+'"/>';
-  }
-  return '<div class="contour" aria-hidden="true" style="opacity:'+op+'"><svg viewBox="0 0 860 380" preserveAspectRatio="xMidYMid slice">'+paths+'</svg></div>';
-}
+<div class="swatches">
+<div class="sw"><div style="background:var(--paper)"></div><span>--paper</span></div>
+<div class="sw"><div style="background:var(--surface)"></div><span>--surface</span></div>
+<div class="sw"><div style="background:var(--surface-sunk)"></div><span>--surface-sunk</span></div>
+<div class="sw"><div style="background:var(--ink)"></div><span>--ink</span></div>
+<div class="sw"><div style="background:var(--trail)"></div><span>--trail (knowledge, primary)</span></div>
+<div class="sw"><div style="background:var(--trail-soft)"></div><span>--trail-soft</span></div>
+<div class="sw"><div style="background:var(--blaze)"></div><span>--blaze (draft)</span></div>
+<div class="sw"><div style="background:var(--blaze-soft)"></div><span>--blaze-soft</span></div>
+<div class="sw"><div style="background:var(--web)"></div><span>--web (web evidence)</span></div>
+<div class="sw"><div style="background:var(--web-soft)"></div><span>--web-soft</span></div>
+<div class="sw"><div style="background:var(--danger)"></div><span>--danger</span></div>
+<div class="sw"><div style="background:var(--danger-soft)"></div><span>--danger-soft</span></div>
+</div>
 
-/* ----------------------------------------------------------- 3. DEMO DATA */
-/* Illustrative model labels only — NOT vendor commitments (assumption A3). */
-const MODELS = {
-  'atlas-3':   { name:'Atlas 3',     blurb:'Balanced reasoning' },
-  'kestrel':   { name:'Kestrel 1.5', blurb:'Fast, short answers' },
-  'quarry':    { name:'Quarry Deep', blurb:'Slow, thorough analysis' }
-};
-const MODEL_ORDER = ['atlas-3','kestrel','quarry'];
+<h3>Rules</h3>
+<table>
+<tr><th>Rule</th><th>Detail</th></tr>
+<tr><td>Colour meaning</td><td>Trail green = confirmed knowledge and the primary action. Blaze ochre = draft or unconfirmed. Slate blue = web evidence. Danger red = destructive or failed. No other accent colours. Never use these colours decoratively.</td></tr>
+<tr><td>Typography</td><td>UI text in the system sans stack at 14.5px. Assistant replies, summary bodies, and knowledge answers in the reading serif stack at 16px with 1.62 line height and 68ch measure. Headings in the serif stack. Code in the mono stack.</td></tr>
+<tr><td>Spacing</td><td>4px base scale (<code>--s1</code> to <code>--s10</code>). Component padding uses <code>--s3</code>/<code>--s4</code>; section gaps <code>--s6</code>/<code>--s7</code>.</td></tr>
+<tr><td>Radii and elevation</td><td>Inputs and buttons <code>--r-md</code>; cards and composer <code>--r-lg</code>; pills <code>--r-pill</code>. Elevation only on the composer (<code>--e1</code>), cards in lists (<code>--e2</code>), and dialogs and drawers (<code>--e3</code>).</td></tr>
+<tr><td>Focus</td><td>Every interactive element shows <code>--focus</code> on <code>:focus-visible</code>. Never remove outlines without this replacement.</td></tr>
+<tr><td>Motion</td><td>Transitions of 160ms on colour, border, and shadow only. Drawers slide 160ms. Everything collapses to 0ms under <code>prefers-reduced-motion</code>. The streaming cursor blinks unless reduced motion is set, in which case it is static.</td></tr>
+<tr><td>Contrast</td><td>All text pairs meet WCAG AA 4.5:1; <code>--ink-30</code> is the lightest text colour allowed on <code>--surface</code>.</td></tr>
+<tr><td>Icons</td><td>Inline SVG, 16px in controls and 20px in navigation, stroke 1.75, <code>aria-hidden</code> with a visible or screen-reader label. No icon-only control without an accessible name.</td></tr>
+</table>
 
-/* Real, stable public URLs. Snippets are ILLUSTRATIVE and were NOT fetched (A10). */
-const SOURCES = {
-  sourdough:{ title:'Sourdough', site:'en.wikipedia.org', url:'https://en.wikipedia.org/wiki/Sourdough',
-    quote:'A starter is a stable culture of wild yeasts and lactic acid bacteria maintained by regular refreshment with flour and water.' },
-  lactic:{ title:'Lactic acid fermentation', site:'en.wikipedia.org', url:'https://en.wikipedia.org/wiki/Lactic_acid_fermentation',
-    quote:'Lactic acid bacteria convert sugars into lactic acid, lowering pH and inhibiting competing organisms.' },
-  preferment:{ title:'Pre-ferment', site:'en.wikipedia.org', url:'https://en.wikipedia.org/wiki/Pre-ferment',
-    quote:'Ripeness of a pre-ferment depends on temperature, hydration and the ratio of old culture to fresh flour.' },
-  crdttech:{ title:'CRDT.tech — an overview of conflict-free replicated data types', site:'crdt.tech', url:'https://crdt.tech/',
-    quote:'CRDTs guarantee that replicas which have received the same set of updates converge, without coordination.' },
-  crdtwiki:{ title:'Conflict-free replicated data type', site:'en.wikipedia.org', url:'https://en.wikipedia.org/wiki/Conflict-free_replicated_data_type',
-    quote:'State-based and operation-based CRDTs are equivalent in expressive power but differ sharply in bandwidth and metadata cost.' },
-  otwiki:{ title:'Operational transformation', site:'en.wikipedia.org', url:'https://en.wikipedia.org/wiki/Operational_transformation',
-    quote:'OT relies on transforming concurrent operations against one another, which usually assumes a central server ordering.' },
-  spaced:{ title:'Spaced repetition', site:'en.wikipedia.org', url:'https://en.wikipedia.org/wiki/Spaced_repetition',
-    quote:'Increasing intervals between reviews exploits the spacing effect to improve long-term retention.' },
-  gwern:{ title:'Spaced repetition for efficient learning', site:'gwern.net', url:'https://gwern.net/spaced-repetition',
-    quote:'The cost of a card is paid many times over its lifetime, so the decision to add one deserves more scrutiny than the schedule.' },
-  forget:{ title:'Forgetting curve', site:'en.wikipedia.org', url:'https://en.wikipedia.org/wiki/Forgetting_curve',
-    quote:'Retention declines sharply soon after learning and then flattens; each successful recall reduces the rate of decline.' },
-  pricing:{ title:'Freemium', site:'en.wikipedia.org', url:'https://en.wikipedia.org/wiki/Freemium',
-    quote:'Conversion from free to paid tiers depends heavily on which capability is withheld, not on trial length alone.' }
-};
+<h3>Reusable components</h3>
+<table>
+<tr><th>Component</th><th>Variants and rules</th></tr>
+<tr><td>Button</td><td>primary, secondary, ghost, danger; sizes sm, base, lg; block. Disabled uses <code>aria-disabled</code> plus 45% opacity and keeps focusability so the reason can be announced. A busy button shows a spinner and keeps its width.</td></tr>
+<tr><td>Field</td><td>Label above, hint below, error below in danger red with <code>aria-describedby</code>. Invalid inputs get <code>aria-invalid</code> and the danger border.</td></tr>
+<tr><td>Pill</td><td>draft (blaze), saved (trail), web (slate), muted, danger. Always icon or glyph plus a word.</td></tr>
+<tr><td>Message</td><td>user (sunk bubble, sans) and assistant (serif, no bubble) with a meta line: role or model name, time, state pill when not complete.</td></tr>
+<tr><td>Sources block</td><td>Slate left border under an assistant message; numbered list of title, publisher, and snippet; each title is an external link.</td></tr>
+<tr><td>Composer</td><td>Auto-growing textarea (3 to 12 lines), research toggle, model name, send button, character counter appearing at 90% of the limit.</td></tr>
+<tr><td>Drawer</td><td>Right-side panel on desktop (420px), bottom sheet on mobile (90% height). Focus trapped, <span class="kbd">Esc</span> closes, focus returns to the opener.</td></tr>
+<tr><td>Dialog</td><td>Centered, max 480px, one primary and one secondary action. Used only for destructive confirmations.</td></tr>
+<tr><td>Alert</td><td>error, info, success. Inline near the action that produced it, with <code>role="alert"</code> for errors and <code>role="status"</code> otherwise.</td></tr>
+<tr><td>Empty state</td><td>Heading, one sentence, one primary action.</td></tr>
+<tr><td>Markdown view</td><td>Sanitized rendering (headings to h4, lists, emphasis, code, links). No images, no raw HTML, links open in a new tab with <code>rel="noopener noreferrer nofollow"</code>. <span class="ref">R-38</span></td></tr>
+</table>
 
-const DAY = 86400000;
-function seedData(){
-  const t = now();
-  const conversations = [
-    { id:'c_sour', title:'Why my sourdough starter stalls after a week', createdAt:t-9*DAY, updatedAt:t-9*DAY, summaryId:'s_sour',
-      messages:[
-        { id:uid('m'), role:'user', text:'My starter doubles reliably for about a week, then goes sluggish even though I keep feeding it the same way. What is actually happening in the jar?', ts:t-9*DAY },
-        { id:uid('m'), role:'ai', model:'atlas-3', ts:t-9*DAY+60000, sources:['sourdough','lactic'],
-          text:'A starter is two populations sharing one jar: wild yeasts and lactic acid bacteria [1]. They are not in balance by default — the bacteria usually outnumber the yeast by a wide margin, and they acidify the environment as they work [2].\n\nWhen a starter slows down after a good week, the usual cause is not that it ran out of food. It is that the pH has drifted low enough to suppress the yeast that produces the gas you are watching for. Same feed, same flour, different chemistry.\n\nThree things move that balance:\n- Feed ratio. A 1:1:1 refresh leaves a lot of old acidic culture behind. Going to 1:5:5 dilutes it.\n- Temperature. Warmth favours the bacteria more than the yeast, so a warm kitchen tips the ratio faster.\n- Time between feeds. Long gaps let acid accumulate before the next dilution.' },
-        { id:uid('m'), role:'user', text:'So is it acidity or food supply? I want to know which one to fix first.', ts:t-9*DAY+240000 },
-        { id:uid('m'), role:'ai', model:'quarry', ts:t-9*DAY+300000, sources:['preferment','lactic'],
-          text:'Acidity first, food second — and there is a quick way to tell them apart.\n\nIf it were purely food supply, the starter would rise fast and then collapse early, because the sugars are consumed quickly. If it is acidity, the rise is slow and shallow from the start and the smell sharpens towards vinegar or acetone.\n\nThe practical test is one dilution. Refresh at 1:5:5 at around 24 °C for two cycles [1]. If activity returns within two feeds, acidity was the constraint. If nothing changes, look at the flour: very low-extraction white flour can genuinely run short of the minerals and enzyme activity the culture needs [2].' }
-      ]},
-    { id:'c_crdt', title:'CRDTs or operational transforms for offline-first sync', createdAt:t-5*DAY, updatedAt:t-5*DAY, summaryId:'s_crdt',
-      messages:[
-        { id:uid('m'), role:'user', text:'I need offline-first sync for a note editor where a device might be offline for days. CRDT or OT? I keep getting contradictory advice.', ts:t-5*DAY },
-        { id:uid('m'), role:'ai', model:'atlas-3', ts:t-5*DAY+50000, sources:['crdttech','otwiki'],
-          text:'For days-long offline windows, CRDTs are the safer default.\n\nThe deciding property is what each approach assumes about ordering. Operational transformation transforms concurrent operations against each other, and in practice that transformation is coordinated by a central server that fixes an order [2]. If a client has been offline for days, it returns with a long run of operations that must be transformed against everything that happened meanwhile — correct in theory, unpleasant in practice.\n\nCRDTs move the burden into the data type itself: replicas that have seen the same set of updates converge, regardless of the order they arrived in [1]. There is no server whose job it is to referee.\n\nThe trade you are making is metadata. CRDTs remember more per document so they can merge without asking anyone.' },
-        { id:uid('m'), role:'user', text:'What actually breaks with CRDTs once documents get long-lived?', ts:t-5*DAY+400000 },
-        { id:uid('m'), role:'ai', model:'quarry', ts:t-5*DAY+460000, sources:['crdtwiki','crdttech'],
-          text:'The failure mode is size, not correctness.\n\nEvery character that was ever inserted needs a stable identity, and deletions are usually recorded rather than erased, so a document that has been edited for a year carries the history of edits nobody can see [1]. State-based and operation-based variants have the same expressive power but very different bandwidth profiles [1], which is why the choice between them is really a network decision.\n\nThe second issue is that merging is only mechanically correct. Two people rewriting the same paragraph produce a merge that converges and reads badly. CRDTs guarantee that everyone sees the same text, not that the text is good [2].' }
-      ]},
-    { id:'c_spaced', title:'Designing a review schedule that survives busy weeks', createdAt:t-2*DAY, updatedAt:t-2*DAY, summaryId:'s_spaced',
-      messages:[
-        { id:uid('m'), role:'user', text:'I want a spaced repetition habit that does not collapse the moment I miss three days. How should the schedule actually be designed?', ts:t-2*DAY },
-        { id:uid('m'), role:'ai', model:'atlas-3', ts:t-2*DAY+45000, sources:['spaced','forget'],
-          text:'Design for the missed week, not the perfect one.\n\nThe mechanism you are relying on is the spacing effect: expanding the gap between reviews produces better long-term retention than repeating at a fixed interval [1]. Retention falls off sharply just after learning and then flattens, and each successful recall makes the curve shallower [2]. That means the highest-value review is the one just before you would have forgotten — not the one you do out of guilt.\n\nA schedule that survives interruption has three properties: intervals expand rather than repeat, a missed day defers work instead of multiplying it, and the daily ceiling is fixed so a backlog cannot become unbounded.' },
-        { id:uid('m'), role:'user', text:'How many new items per day is sane?', ts:t-2*DAY+300000 },
-        { id:uid('m'), role:'ai', model:'kestrel', ts:t-2*DAY+330000, sources:['gwern'],
-          text:'Fewer than feels satisfying. A new item is not a one-off cost — you pay for it at every future review, so the decision to add one deserves more scrutiny than the scheduling algorithm does [1].\n\nA workable starting point is 5 to 10 new items a day with a hard daily review ceiling. If reviews regularly exceed the ceiling, the answer is to add fewer items, not to review more.' }
-      ]}
-  ];
+<!-- ================================================================== -->
+<h2 id="ia">4. Navigation and information architecture</h2>
+<table>
+<tr><th>Route</th><th>Screen</th><th>Access</th></tr>
+<tr><td><code>/login</code>, <code>/register</code></td><td>Entry with product introduction</td><td>Public; redirects to <code>/</code> when signed in</td></tr>
+<tr><td><code>/</code></td><td>Workspace: opens the most recent conversation or the new-conversation state</td><td>Signed in</td></tr>
+<tr><td><code>/c/new</code></td><td>New conversation (created on first send)</td><td>Signed in</td></tr>
+<tr><td><code>/c/:id</code></td><td>Conversation thread</td><td>Owner; others see "not found"</td></tr>
+<tr><td><code>/c/:id/summary</code></td><td>Summary review for that conversation</td><td>Owner</td></tr>
+<tr><td><code>/library</code></td><td>Saved knowledge list with search and archive filter</td><td>Signed in</td></tr>
+<tr><td><code>/library/:id</code></td><td>Saved summary detail and versions</td><td>Owner</td></tr>
+<tr><td><code>/ask</code></td><td>Ask my knowledge</td><td>Signed in</td></tr>
+<tr><td><code>/account</code></td><td>Display name, change password, sign out</td><td>Signed in</td></tr>
+</table>
+<p><strong>Desktop layout.</strong> Three columns: a 216px rail (Conversations, Library, Ask, Account, and the signed-in name), a 292px context list (conversations or summaries depending on section), and the main reading column. The rail collapses to icons at widths under 1100px.</p>
+<p><strong>Mobile layout.</strong> A bottom tab bar with Chats, Library, Ask, Account. The conversation list is a full screen; opening a conversation pushes the thread with a back control. The composer is pinned above the tab bar.</p>
+<p><strong>Titles.</strong> A conversation is titled from its first message, truncated to 80 characters, and can be renamed from the thread header. <span class="ref">R-30</span></p>
 
-  const summaries = [
-    { id:'s_sour', conversationId:'c_sour', savedAt:t-9*DAY+900000,
-      title:'A stalling sourdough starter is usually acidity, not hunger',
-      topic:'Fermentation',
-      keywords:['sourdough','starter','ferment','fermentation','yeast','bacteria','acid','acidity','ph','flour','bread','levain','feed','feeding'],
-      gaps:['gluten','hydration percent','oven','baking temperature','crumb','scoring','rye','commercial yeast'],
-      models:['atlas-3','quarry'], sources:['sourdough','lactic','preferment'],
-      body:'# What I was working out\nWhy a healthy starter doubles reliably for a week and then goes sluggish under an unchanged feeding routine.\n\n# What I concluded\n- A starter holds two populations — wild yeast and lactic acid bacteria — and they are not naturally in balance.\n- The slowdown is almost always accumulated acidity suppressing the yeast, not a shortage of food.\n- Warmth and small feed ratios both tip the balance towards the bacteria faster.\n- One diagnostic: refresh at 1:5:5 around 24 °C for two cycles. Recovery within two feeds means acidity was the constraint.\n\n# Still open\n- Whether switching part of the flour to whole rye changes the balance or only the flavour.\n- How much of the effect is jar geometry and surface area rather than chemistry.' },
+<!-- ================================================================== -->
+<h2 id="install">5. Installation, first run, and configuration behavior</h2>
+<p>The operator experience is the README plus two files. The product surfaces configuration only through what it enables or hides.</p>
+<ol>
+<li>Copy <code>.env.example</code> to <code>.env</code> and fill in: public origin, secret key, database password, model base URL, model name, model API key (optional for local runtimes), and optionally the search key, Google client id and secret, and the registration flag.</li>
+<li>Run <code>docker compose up -d</code>. The API applies migrations and starts. <code>make check-model</code> (or the equivalent command in the API container) sends a one-token request and prints success or the exact error. <span class="ref">R-19</span></li>
+<li>Open the public origin. The first registered account becomes the admin. <span class="ref">R-14</span></li>
+</ol>
+<table>
+<tr><th>Configuration</th><th>Visible effect in the product</th></tr>
+<tr><td>Search key missing or provider <code>none</code></td><td>The research toggle is not rendered; the capabilities endpoint reports research unavailable; the Ask screen's "research this instead" action opens a conversation without the toggle. <span class="ref">R-08</span></td></tr>
+<tr><td>Google not configured</td><td>The Google button is not rendered on entry screens.</td></tr>
+<tr><td>Registration closed</td><td>The register form shows "Registration is closed on this installation" with the sign-in link; the register route still renders so the message is discoverable.</td></tr>
+<tr><td>Model unavailable</td><td>Sending works up to the model call, then the reply shows a failed state with "The configured model did not respond" and a retry action. No configuration details are shown to users. <span class="ref">R-06</span></td></tr>
+<tr><td>Plain HTTP on a LAN address</td><td>Not supported by default. The README states that the session cookie requires HTTPS or localhost, and that <code>NUROLI_SESSION_COOKIE_SECURE=false</code> is an explicit, documented risk. <span class="ref">R-13</span></td></tr>
+<tr><td>Model name</td><td>Shown in the composer footer and on every reply, as configured. Model name never reveals the base URL or key.</td></tr>
+</table>
+<p><strong>Operator commands</strong> (inside the API container): <code>nuroli check-model</code>, <code>nuroli reset-password &lt;email&gt;</code> (prints a temporary password once and revokes sessions <span class="ref">R-15</span>), <code>nuroli delete-user &lt;email&gt;</code>, plus <code>make backup</code> and <code>make restore</code> from the host.</p>
 
-    { id:'s_crdt', conversationId:'c_crdt', savedAt:t-5*DAY+900000,
-      title:'CRDTs beat OT for long offline windows, and the cost is metadata',
-      topic:'Systems',
-      keywords:['crdt','crdts','ot','operational','transform','transformation','sync','offline','merge','conflict','replica','converge','collaborative','editor','distributed'],
-      gaps:['garbage collection','tombstone','tombstones','metadata growth','compaction','prune','pruning','storage size','battery','encryption','permissions','access control','undo'],
-      models:['atlas-3','quarry'], sources:['crdttech','crdtwiki','otwiki'],
-      body:'# What I was working out\nWhether to build offline-first sync for a note editor on CRDTs or operational transformation, given devices that may be offline for days.\n\n# What I concluded\n- OT assumes an authority that fixes an order for concurrent operations; long offline runs make that reconciliation expensive.\n- CRDTs put convergence in the data type, so replicas that have seen the same updates agree without coordination.\n- For days-long offline windows, CRDTs are the safer default.\n- The cost is metadata: stable identity per inserted character, and deletions recorded rather than erased.\n- Convergence is mechanical, not editorial. Two people rewriting one paragraph get a merge that agrees and reads badly.\n\n# Still open\n- Long-term metadata growth and whether compaction can be done safely.\n- Whether operation-based or state-based variants suit an unreliable mobile network better.' },
+<!-- ================================================================== -->
+<h2 id="auth">6. Authentication and registration</h2>
+<p>The entry screen introduces the product in one sentence and offers sign in or create account. Google sign-in appears when configured. <span class="ref">R-16</span> one method per email.</p>
 
-    { id:'s_spaced', conversationId:'c_spaced', savedAt:t-2*DAY+900000,
-      title:'A review schedule should be designed around the week you miss',
-      topic:'Learning',
-      keywords:['spaced','repetition','review','reviews','schedule','scheduling','interval','intervals','memory','retention','recall','forgetting','anki','flashcard','flashcards','study','learning','habit'],
-      gaps:['algorithm parameters','fsrs','sm-2','ease factor','image occlusion','language vocabulary','exam cramming'],
-      models:['atlas-3','kestrel'], sources:['spaced','forget','gwern'],
-      body:'# What I was working out\nHow to design a spaced repetition habit that survives interruption instead of collapsing after a few missed days.\n\n# What I concluded\n- Expanding intervals beat fixed repetition; the useful review is the one just before recall would fail.\n- Retention drops sharply after learning and then flattens, and each successful recall flattens it further.\n- A durable schedule defers work on a missed day rather than multiplying it, and holds a fixed daily ceiling.\n- New items are the real cost, because each one is paid for at every future review.\n- 5 to 10 new items a day with a hard review ceiling is a sane starting point.\n\n# Still open\n- Which scheduling algorithm to actually use, and how much its parameters matter next to volume.\n- Whether the same shape works for procedural skills rather than facts.' }
-  ];
-  return { conversations, summaries };
-}
+<div class="mock"><div class="mock__bar"><i></i><i></i><i></i> /login · 1440px</div>
+<div class="mock__body" style="display:grid;grid-template-columns:1.1fr 1fr;gap:var(--s7);align-items:center;min-height:360px">
+  <div>
+    <h1 style="font-size:var(--t-2xl)">Keep what you worked out, not just what you asked.</h1>
+    <p style="color:var(--ink-70);margin-top:var(--s3)">Ask, research with sources, go deeper, then save a reviewed summary you can question later.</p>
+  </div>
+  <div class="card" style="max-width:380px;justify-self:end;width:100%">
+    <h3 style="margin:0 0 var(--s4)">Welcome back</h3>
+    <button class="btn btn--secondary btn--block">Continue with Google</button>
+    <p style="text-align:center;color:var(--ink-30);font-size:var(--t-xs);margin:var(--s3) 0">or</p>
+    <label class="field"><span class="field__label">Email</span><input class="input" value="ada@example.org"></label>
+    <label class="field"><span class="field__label">Password</span><input class="input input--invalid" type="password" value="••••••••"><span class="field__error">Email or password is incorrect.</span></label>
+    <button class="btn btn--primary btn--block">Sign in</button>
+    <p style="font-size:var(--t-sm);margin-top:var(--s4);color:var(--ink-50)">New here? <a href="#">Create an account</a></p>
+  </div>
+</div></div>
+<p class="cap">Sign-in with an invalid credential error. The error is attached to the password field and announced.</p>
 
-/* Canned assistant replies. Matched on keywords; otherwise a generic reply that
-   reflects the question back honestly rather than inventing facts. */
-const REPLIES = [
-  { k:['sourdough','starter','ferment','yeast','levain','bread'], search:true, sources:['sourdough','lactic'],
-    text:'Two populations share that jar — wild yeast and lactic acid bacteria — and they respond to temperature and feed ratio differently [1].\n\nMost "my starter changed and I did nothing" problems are really slow drift in that ratio. The bacteria acidify the environment as they work, and past a certain pH the yeast stops producing the gas you are looking for [2].\n\nIf you want to test that rather than guess, dilute hard for two cycles and watch whether the rise returns.' },
-  { k:['crdt','operational transform','sync','offline','merge','conflict','collaborative'], search:true, sources:['crdttech','crdtwiki'],
-    text:'The question underneath this is usually "who is allowed to decide the order of events".\n\nCRDTs answer: nobody has to. Replicas that have received the same updates converge on their own [1]. That is what makes them tolerant of long offline windows.\n\nThe bill arrives as metadata. Stable identity per element, deletions recorded rather than erased, and a document that has lived a long time carries history no reader can see [2].' },
-  { k:['spaced','repetition','review','memory','retention','forgetting','anki','flashcard'], search:true, sources:['spaced','forget'],
-    text:'Expanding intervals outperform fixed ones, which is the whole basis of spaced repetition [1].\n\nThe practical consequence is that the most valuable review is the one just before you would have failed to recall — and each success flattens the curve further [2]. Reviewing early feels productive and mostly wastes the effect.\n\nThe scheduling algorithm matters much less than how many items you let in.' },
-  { k:['price','pricing','trial','saas','b2b','revenue','conversion'], search:true, sources:['pricing'],
-    text:'Trial design is usually a packaging question wearing a pricing costume.\n\nWhat converts is not the length of the trial but which capability sits behind the line [1]. A 30-day trial of something nobody needed on day 2 converts worse than a 7-day trial of the thing they came for.\n\nWorth separating three decisions before choosing a number: what is withheld, when the value becomes visible, and who signs.' },
-  { k:['note','notes','knowledge','learn','learning','study'], search:false, sources:[],
-    text:'A useful way to frame this: notes are not storage, they are retrieval practice with a lower failure cost.\n\nThe part most systems get wrong is the write step. Anything captured without a decision attached tends to be un-findable later, because you saved the material rather than the conclusion.\n\nWhat is the question you expect to ask this material six months from now?' }
-];
-const STARTERS = [
-  'Why does my sourdough starter slow down after a good week?',
-  'Should I use CRDTs or operational transforms for offline sync?',
-  'How should I schedule reviews so a missed week does not break the habit?',
-  'What actually makes a written note findable a year later?'
-];
-const ASK_SAMPLES = [
-  'How long should I wait between reviews?',
-  'How do I stop CRDT metadata from growing forever?',
-  'What should I charge for a B2B trial?'
-];
-const SEARCH_STEPS = [
-  'Deciding whether this needs the web',
-  'Searching public sources',
-  'Reading 3 results',
-  'Checking agreement between sources'
-];
-const SUMMARY_STEPS = ['Re-reading the conversation','Separating conclusions from asides','Collecting sources','Drafting'];
+<table>
+<tr><th>Case</th><th>Behavior</th></tr>
+<tr><td>Register</td><td>Fields: display name, email, password (12 to 128 characters, no composition rules, a strength hint that counts only length <span class="ref">R-34</span>). Success signs the user in and opens the workspace.</td></tr>
+<tr><td>Email already registered by password, user tries Google</td><td>Redirect back to <code>/login?error=email_uses_password</code>; message: "This email signs in with a password. Use the password form." <span class="ref">R-16</span></td></tr>
+<tr><td>Email already registered by Google, user tries password register</td><td>Inline on the email field: "This email signs in with Google."</td></tr>
+<tr><td>Google without verified email</td><td>"Google did not confirm this email address. Use a verified Google account."</td></tr>
+<tr><td>Registration closed</td><td>Register form replaced by the closed message and a sign-in link.</td></tr>
+<tr><td>Throttled</td><td>"Too many attempts. Try again in N minutes." with the form disabled until then. <span class="ref">R-36</span></td></tr>
+<tr><td>Session expired while working</td><td>Any 401 shows a non-blocking banner "Your session ended. Sign in to continue." Composer text and draft edits stay in local storage and are restored after sign-in.</td></tr>
+<tr><td>Forgot password</td><td>Link opens a short explanation: "Ask the person who runs this installation to reset your password." No email flow. <span class="ref">R-15</span></td></tr>
+<tr><td>Temporary password</td><td>After an operator reset, the first sign-in lands on the change-password screen and blocks other routes until a new password is set.</td></tr>
+</table>
 
-/* -------------------------------------------------------- 4. STATE + BOOT */
-let state = null;
-function freshState(seeded=true){
-  const data = seeded ? seedData() : { conversations:[], summaries:[] };
-  return {
-    route: 'entry',                 // entry | chat | review | library | detail | ask
-    authTab: 'signin',
-    user: null,
-    conversations: data.conversations,
-    summaries: data.summaries,
-    activeConvId: null,
-    activeSummaryId: null,
-    nextModel: 'atlas-3',
-    composerDrafts: {},             // convId -> text (preserved across navigation)
-    draft: null,                    // in-progress summary draft {convId,title,body,...}
-    draftSavedOnce: false,
-    generating: false,
-    genStep: 0,
-    saving: false,
-    librarySearch: '',
-    justSavedId: null,
-    askInput: '',
-    askResult: null,                // {question, coverage, body, used[], gaps[], web?}
-    askBusy: false,
-    askReturn: null,                // remembers the answer while inspecting a summary
-    reviewTab: 'draft',             // mobile only
-    failNext: false,                // demo control: force a recoverable error
-    authError: null,
-    entryFields: { email:'', name:'', password:'' }
-  };
-}
-function persist(){
-  Store.write({
-    v:1, user:state.user, conversations:state.conversations, summaries:state.summaries,
-    activeConvId:state.activeConvId, nextModel:state.nextModel, composerDrafts:state.composerDrafts,
-    draft:state.draft, route:['review','entry'].includes(state.route) ? 'chat' : state.route
-  });
-}
-function hydrate(){
-  const raw = Store.read();
-  const s = freshState(true);
-  if (raw && raw.v === 1 && Array.isArray(raw.conversations) && Array.isArray(raw.summaries)){
-    try {
-      s.user = raw.user || null;
-      s.conversations = raw.conversations;
-      s.summaries = raw.summaries;
-      s.activeConvId = raw.activeConvId || null;
-      s.nextModel = MODELS[raw.nextModel] ? raw.nextModel : 'atlas-3';
-      s.composerDrafts = raw.composerDrafts || {};
-      s.draft = raw.draft || null;
-      s.route = s.user ? (['chat','library','detail','ask'].includes(raw.route) ? raw.route : 'chat') : 'entry';
-      if (s.route === 'detail') s.route = 'library';
-    } catch(e){ return freshState(true); }   // corrupt payload: fall back to seed
-  }
-  return s;
-}
+<!-- ================================================================== -->
+<h2 id="workspace">7. Conversations: create, continue, stream, stop, retry</h2>
 
-/* ------------------------------------------------- 5. SIMULATION ENGINE */
-let timers = [];
-function clearTimers(){ timers.forEach(clearTimeout); timers.forEach(clearInterval); timers = []; }
-function later(fn, ms){ const t = setTimeout(fn, ms); timers.push(t); return t; }
+<div class="mock"><div class="mock__bar"><i></i><i></i><i></i> /c/:id · 1440px · streaming with sources</div>
+<div class="ws">
+  <nav class="rail" aria-label="Sections">
+    <a aria-current="page" href="#">Conversations</a><a href="#">Library <span class="pill pill--saved">12</span></a><a href="#">Ask</a><a href="#">Account</a>
+    <p style="margin-top:var(--s7);color:var(--ink-30);font-size:var(--t-xs)">Ada · member</p>
+  </nav>
+  <div class="list">
+    <div style="padding:var(--s3);border-bottom:var(--bw) solid var(--line)"><button class="btn btn--primary btn--sm btn--block">New conversation</button></div>
+    <div class="list__item" aria-current="true"><strong>How do CRDTs converge?</strong><br><span style="color:var(--ink-50)">Today · <span class="pill pill--draft">Draft</span></span></div>
+    <div class="list__item">Why does Argon2 need memory?<br><span style="color:var(--ink-50)">Yesterday · <span class="pill pill--saved">Saved</span></span></div>
+    <div class="list__item">Postgres full-text ranking<br><span style="color:var(--ink-50)">Mon</span></div>
+  </div>
+  <div class="ws__main">
+    <div class="topbar"><strong>How do CRDTs converge?</strong><span><button class="btn btn--ghost btn--sm">Rename</button> <button class="btn btn--secondary btn--sm">Summarize</button></span></div>
+    <div class="ws__thread">
+      <div class="msg msg--user"><div class="msg__meta">You · 10:41</div><div class="msg__body">Is there a formal proof that state-based CRDTs converge?</div></div>
+      <div class="msg msg--assistant"><div class="msg__meta">gpt-oss-120b · <span class="pill pill--web">Researched</span> · <span class="pill pill--muted">Streaming</span></div>
+        <div class="msg__body">Yes. State-based CRDTs converge because their merge function is a join over a join-semilattice: it is commutative, associative, and idempotent, so any two replicas that have received the same set of updates reach the same state regardless of order [1][2]. The proof proceeds by showing<span class="cursor" aria-hidden="true"></span></div>
+        <div class="sources"><strong style="color:var(--web)">Sources</strong>
+          <ol style="padding-left:18px;margin:6px 0 0"><li><a href="#">Conflict-free replicated data type</a> · en.wikipedia.org · "…merge is a least upper bound…"</li><li><a href="#">A comprehensive study of CRDTs</a> · hal.inria.fr · "…state-based objects converge…"</li></ol></div>
+      </div>
+    </div>
+    <div class="composer"><div style="color:var(--ink-30)">Ask a follow-up…</div>
+      <div class="composer__row"><span class="toggle toggle--on"><i></i>Research the web</span><span style="color:var(--ink-50)">gpt-oss-120b · <button class="btn btn--danger btn--sm">Stop</button></span></div></div>
+  </div>
+</div></div>
+<p class="cap">Streaming reply with research. Sources arrive before the text and stay attached. The send button becomes Stop while streaming.</p>
 
-function activeConv(){ return state.conversations.find(c => c.id === state.activeConvId) || null; }
-function convById(id){ return state.conversations.find(c => c.id === id) || null; }
-function summaryById(id){ return state.summaries.find(s => s.id === id) || null; }
-function summaryForConv(id){ return state.summaries.find(s => s.conversationId === id) || null; }
+<h3>Rules</h3>
+<table>
+<tr><th>Moment</th><th>Behavior</th></tr>
+<tr><td>New user</td><td>Workspace shows an empty thread with the heading "Start with a real question." and a two-line explanation of research and summaries. The composer is focused.</td></tr>
+<tr><td>Returning user</td><td>Workspace opens the most recently updated conversation. The list shows title, relative time, and a draft or saved pill.</td></tr>
+<tr><td>Create</td><td><code>/c/new</code> shows the empty composer. The conversation is created on the first send, then the URL changes to <code>/c/:id</code>.</td></tr>
+<tr><td>Send</td><td><span class="kbd">Enter</span> sends, <span class="kbd">Shift</span>+<span class="kbd">Enter</span> inserts a newline. The user message appears immediately. An assistant message placeholder with the model name and a "Thinking" pill appears until the first token or the first research event.</td></tr>
+<tr><td>Streaming</td><td>Text appends with a cursor. The thread stays scrolled to the bottom only while the user is at the bottom; scrolling up pins the view and shows a "Jump to latest" button.</td></tr>
+<tr><td>Stop</td><td>The Stop button aborts the request. The partial text stays with a "Stopped" pill and a Retry action. <span class="ref">R-20</span></td></tr>
+<tr><td>Failure</td><td>The message shows a "Failed" pill, the error message from the API, and Retry. Model timeout: "The model took too long to answer." Unavailable: "The configured model did not respond." Context too long: "This conversation is too long for the model. Start a new conversation or summarize this one." <span class="ref">R-20</span></td></tr>
+<tr><td>Retry</td><td>Creates a new reply under the same question. The failed reply collapses into a one-line "Previous attempt failed" row that can be expanded.</td></tr>
+<tr><td>Concurrency</td><td>While one reply streams, the composer is disabled with the hint "Wait for the current reply or stop it." A second tab sending gets the same message from the API's conflict response. <span class="ref">R-21</span></td></tr>
+<tr><td>Rate limit</td><td>"You have reached the hourly limit on this installation. Try again in N minutes."</td></tr>
+<tr><td>Length</td><td>User messages are limited to 32,000 characters; a counter appears at 90%. A reply cut by the output limit ends with the pill "Reached the length limit" and a hint to ask it to continue.</td></tr>
+<tr><td>Composer persistence</td><td>Composer text is kept per conversation in local storage until sent.</td></tr>
+<tr><td>Rename and delete</td><td>Rename inline in the header. Delete opens a dialog: "Delete this conversation? Its saved summary, if any, stays in your library." <span class="ref">R-32</span></td></tr>
+<tr><td>Reopen after crash</td><td>A reply left streaming for more than five minutes is shown as failed with Retry. <span class="ref">R-37</span></td></tr>
+</table>
 
-function pickReply(q){
-  const low = ' ' + q.toLowerCase() + ' ';
-  for (const r of REPLIES){ if (r.k.some(k => low.includes(k))) return r; }
-  return { search:false, sources:[], text:
-    'Here is how I would take that apart.\n\nThe question has two halves that are easy to conflate: what is actually true, and what you should do given that. Answering the first without the second produces reading; answering the second without the first produces confident mistakes.\n\nStart with the constraint you can test soonest. That is usually the fastest way to find out which half you are actually stuck on.\n\n(Demo note: this is a simulated reply. Try one of the seeded topics — sourdough, CRDTs or spaced repetition — for a fuller answer with sources.)' };
-}
+<!-- ================================================================== -->
+<h2 id="model">8. The single configured model and future model selection</h2>
+<p>V1 has exactly one model, named by the operator. <span class="ref">R-06</span> The name appears in the composer footer and in every assistant meta line, so the attribution rule is visible from day one. There is no picker, no model settings screen, and no per-user key entry.</p>
+<p><strong>Reserved behavior for later.</strong> When multiple models exist, the composer footer's model name becomes a menu that sets the model for the next reply only. Earlier replies keep their recorded model names. The conversation list and summaries do not change. This spec reserves the footer slot and the meta-line attribution so the later change is additive.</p>
 
-/* Sends a user message and simulates search + streaming for the reply. */
-function sendMessage(text){
-  text = text.trim();
-  if (!text) return;
-  let conv = activeConv();
-  if (!conv){
-    conv = { id:uid('c'), title:text.slice(0,64) + (text.length>64?'…':''), createdAt:now(), updatedAt:now(), messages:[], summaryId:null };
-    state.conversations.unshift(conv);
-    state.activeConvId = conv.id;
-  }
-  conv.messages.push({ id:uid('m'), role:'user', text, ts:now() });
-  conv.updatedAt = now();
-  state.composerDrafts[conv.id] = '';
-  state.pinStream = true;
-  render();
-  beginReply(conv, text);
-}
+<!-- ================================================================== -->
+<h2 id="research">9. Web research and source inspection</h2>
+<table>
+<tr><th>Element</th><th>Behavior</th></tr>
+<tr><td>Toggle</td><td>"Research the web" in the composer, off by default for a new conversation and remembering the last choice within the conversation. Hidden entirely when research is not configured. <span class="ref">R-09</span></td></tr>
+<tr><td>Progress</td><td>Between send and first token: "Searching the web for: <em>query</em>" as a status line under the placeholder, then "Found 5 sources" or "Search skipped" with the reason (not configured, hourly limit, or search failed). A skipped search never blocks the reply.</td></tr>
+<tr><td>Sources block</td><td>Rendered under the reply in slate blue: number, title as external link, publisher, snippet. The list comes from the search results, never from the model's text. Citation markers in the text like [1] are plain text that match the list. <span class="ref">R-07</span></td></tr>
+<tr><td>Inspect</td><td>Clicking a source number opens the source drawer with the full snippet and the link, without leaving the thread. The thread keeps its scroll position. Links open in a new tab.</td></tr>
+<tr><td>Researched pill</td><td>Replies that used research show a "Researched" pill so later readers know which replies carry evidence.</td></tr>
+<tr><td>No results</td><td>"No web results for this question" and the reply proceeds from the conversation alone.</td></tr>
+</table>
 
-function beginReply(conv, question){
-  const plan = pickReply(question);
-  const msg = {
-    id: uid('m'), role:'ai', model: state.nextModel, ts: now(),
-    text:'', sources: plan.sources.slice(), streaming:true,
-    searching: plan.search, searchStep: 0, error:false, stopped:false,
-    _full: plan.text, _q: question
-  };
-  conv.messages.push(msg);
-  render();
+<!-- ================================================================== -->
+<h2 id="summary">10. Summary generation, review, editing, and confirmation</h2>
+<p>Summarize is available in the thread header once the conversation has at least one complete reply. It generates a draft and opens the review screen. <span class="ref">R-18</span></p>
 
-  const runStream = () => {
-    msg.searching = false;
-    /* demo control: force one recoverable failure */
-    if (state.failNext){
-      state.failNext = false;
-      later(() => {
-        msg.streaming = false; msg.error = true;
-        msg.text = ''; render();
-        toast('Reply failed. The demo error control is now off.', 'err');
-      }, 700);
-      return;
-    }
-    const words = msg._full.split(' ');
-    let i = 0;
-    const iv = setInterval(() => {
-      if (!msg.streaming){ clearInterval(iv); return; }
-      i += 2;
-      msg.text = words.slice(0, i).join(' ');
-      const node = $('[data-msg="'+msg.id+'"] .msg__body');
-      if (node) node.innerHTML = richText(msg.text, msg.sources) + '<span class="caret" aria-hidden="true"></span>';
-      const sc = $('[data-scroll="stream"]');
-      if (sc && state.pinStream) sc.scrollTop = sc.scrollHeight;
-      if (i >= words.length){
-        clearInterval(iv);
-        msg.streaming = false; msg.text = msg._full;
-        conv.updatedAt = now(); persist(); render();
-      }
-    }, 34);
-    timers.push(iv);
-  };
+<div class="mock"><div class="mock__bar"><i></i><i></i><i></i> /c/:id/summary · 1440px · review before saving</div>
+<div class="mock__body">
+  <div class="topbar"><span><strong>Review before saving</strong> <span class="pill pill--draft">Draft · not in your library</span></span><span><button class="btn btn--ghost btn--sm">Back to conversation</button> <button class="btn btn--danger btn--sm">Discard draft</button> <button class="btn btn--primary btn--sm">Save to library</button></span></div>
+  <div class="split">
+    <div>
+      <label class="field"><span class="field__label">Title</span><input class="input" value="State-based CRDTs converge via semilattice joins"></label>
+      <label class="field"><span class="field__label">Summary <span style="font-weight:400;color:var(--ink-50)">(Markdown)</span></span>
+      <div class="textarea editor">## Conclusions
+- State-based CRDTs converge because merge is a join on a join-semilattice: commutative, associative, idempotent.
+- Delivery order does not matter as long as every replica eventually receives every state.
 
-  if (plan.search){
-    const step = () => {
-      msg.searchStep++;
-      const el = $('[data-searchstep="'+msg.id+'"]');
-      if (el) el.textContent = SEARCH_STEPS[Math.min(msg.searchStep, SEARCH_STEPS.length-1)];
-      if (msg.searchStep < SEARCH_STEPS.length - 1 && msg.streaming) later(step, 520);
-      else if (msg.streaming) later(runStream, 480);
-    };
-    later(step, 520);
-  } else {
-    later(runStream, 420);
-  }
-}
+## Open questions
+- How do delta-state CRDTs keep the same guarantee with smaller messages?</div>
+      <span class="field__hint">Saved as you type · revision 4</span></label>
+      <div class="sources"><strong style="color:var(--web)">Sources carried from the conversation</strong> <span style="color:var(--ink-50)">(read-only)</span>
+        <ol style="padding-left:18px;margin:6px 0 0"><li><a href="#">Conflict-free replicated data type</a> · en.wikipedia.org</li><li><a href="#">A comprehensive study of CRDTs</a> · hal.inria.fr</li></ol></div>
+    </div>
+    <div class="card" style="background:var(--surface-2)"><p style="font-size:var(--t-xs);color:var(--ink-50);margin-bottom:var(--s3)">CONVERSATION (read-only)</p>
+      <div class="msg msg--user"><div class="msg__body">Is there a formal proof that state-based CRDTs converge?</div></div>
+      <div class="msg msg--assistant"><div class="msg__meta">gpt-oss-120b</div><div class="msg__body" style="font-size:var(--t-base)">Yes. State-based CRDTs converge because their merge function is a join over a join-semilattice…</div></div>
+    </div>
+  </div>
+</div></div>
+<p class="cap">Desktop review: editable draft on the left, read-only conversation on the right. Sources are carried over and cannot be edited.</p>
 
-function stopStreaming(msgId){
-  const conv = activeConv(); if (!conv) return;
-  const m = conv.messages.find(x => x.id === msgId); if (!m) return;
-  clearTimers();
-  m.streaming = false; m.searching = false; m.stopped = true;
-  if (!m.text) m.text = '';
-  render(); toast('Stopped. You can retry this reply.');
-}
-function retryMessage(msgId){
-  const conv = activeConv(); if (!conv) return;
-  const idx = conv.messages.findIndex(x => x.id === msgId); if (idx < 0) return;
-  const m = conv.messages[idx];
-  const q = m._q || (conv.messages[idx-1] && conv.messages[idx-1].text) || '';
-  conv.messages.splice(idx, 1);
-  render();
-  beginReply(conv, q);
-}
+<table>
+<tr><th>Moment</th><th>Behavior</th></tr>
+<tr><td>Generate</td><td>Summarize shows a full-width progress state "Drafting a summary from N messages" with a cancel that returns to the thread. Generation is synchronous and bounded by the model timeout. Failure shows the model error and "Try again".</td></tr>
+<tr><td>Draft marking</td><td>Blaze pill "Draft · not in your library" on the review screen and in the conversation list. Drafts never appear in the library or in knowledge answers.</td></tr>
+<tr><td>Edit</td><td>Title field and one Markdown editor with a preview toggle. Edits are saved to the draft through the API 800ms after typing stops, with "Saved as you type · revision N". A stale-revision conflict (two tabs) reloads the draft and shows "This draft changed elsewhere. Reloaded the latest version."</td></tr>
+<tr><td>Save to library</td><td>Primary action. Sends the current revision. Success: green banner "Saved to your library" with a link to the entry, the pill becomes "Saved", and the button becomes "Edit". A double click sends one request; the second receives no-draft and is treated as success. <span class="ref">R-18</span></td></tr>
+<tr><td>Back to conversation</td><td>Keeps the draft. The thread header shows "Draft summary in progress · Continue" so the draft is easy to find.</td></tr>
+<tr><td>Discard</td><td>Dialog: "Discard this draft? Your saved summary, if any, is not affected." Confirming deletes the draft (or the whole unsaved summary).</td></tr>
+<tr><td>Regenerate</td><td>Available on the review screen: dialog "Replace the current draft with a new one? Your edits will be lost." <span class="ref">R-31</span></td></tr>
+<tr><td>Edit a saved summary</td><td>From the library detail, Edit creates a draft from the current version and opens the review screen with the same layout. Saving creates version N+1. Older versions stay readable.</td></tr>
+<tr><td>Validation</td><td>Title required (1 to 200 characters); body required (1 to 50,000). Errors inline; Save disabled with the reason as hint.</td></tr>
+<tr><td>Mobile</td><td>Editor first; the conversation is a bottom sheet opened by "Show conversation". Actions sit in a sticky footer: Discard, Save.</td></tr>
+</table>
 
-/* --- summary drafting ---------------------------------------------------- */
-function startSummary(){
-  const conv = activeConv(); if (!conv) return;
-  if (state.draft && state.draft.convId === conv.id){
-    state.route = 'review'; render();
-    toast('Reopened your unsaved draft.');
-    return;
-  }
-  state.generating = true; state.genStep = 0; state.route = 'review'; render();
-  const tick = () => {
-    state.genStep++;
-    const el = $('[data-genstep]');
-    if (el) el.textContent = SUMMARY_STEPS[Math.min(state.genStep, SUMMARY_STEPS.length-1)];
-    if (state.genStep < SUMMARY_STEPS.length - 1) later(tick, 560);
-    else later(() => { state.generating = false; state.draft = buildDraft(conv); render(); }, 620);
-  };
-  later(tick, 560);
-}
-function buildDraft(conv){
-  const existing = summaryForConv(conv.id);
-  const firstQ = (conv.messages.find(m => m.role === 'user') || {}).text || '';
-  const ai = conv.messages.filter(m => m.role === 'ai' && m.text);
-  const models = Array.from(new Set(ai.map(m => m.model)));
-  const srcs = Array.from(new Set(ai.flatMap(m => m.sources || [])));
-  let body;
-  if (existing){
-    body = existing.body;
-  } else {
-    const points = ai.map(m => {
-      const first = m.text.replace(/\[\d\]/g,'').split(/\n+/)[0].trim();
-      return '- ' + first.replace(/\s+/g,' ').slice(0, 220);
-    });
-    body = '# What I was working out\n' + firstQ.replace(/\s+/g,' ') +
-      '\n\n# What I concluded\n' + (points.join('\n') || '- ') +
-      '\n\n# Still open\n- ';
-  }
-  return {
-    convId: conv.id,
-    title: existing ? existing.title : conv.title,
-    body,
-    topic: existing ? existing.topic : 'Notes',
-    models: models.length ? models : ['atlas-3'],
-    sources: srcs,
-    dirty: false
-  };
-}
-function confirmSave(){
-  if (state.saving) return;                       // guard 1: in-flight
-  const d = state.draft; if (!d) return;
-  if (!d.title.trim()){ toast('Give the summary a title before saving.','err'); return; }
-  state.saving = true; render();
-  later(() => {
-    if (!state.draft){ state.saving = false; return; }  // guard 2: already consumed
-    const entry = {
-      id: uid('s'), conversationId: d.convId, savedAt: now(),
-      title: d.title.trim(), topic: d.topic || 'Notes',
-      keywords: deriveKeywords(d.title + ' ' + d.body),
-      gaps: [], models: d.models, sources: d.sources, body: d.body
-    };
-    state.summaries.unshift(entry);
-    const conv = convById(d.convId); if (conv) conv.summaryId = entry.id;
-    state.draft = null; state.saving = false;
-    state.justSavedId = entry.id; state.activeSummaryId = entry.id;
-    state.route = 'detail';
-    persist(); render();
-    toast('Saved to knowledge. One entry added.', 'ok');
-  }, 620);
-}
-function deriveKeywords(t){
-  const stop = new Set(['the','and','that','with','this','from','what','when','have','into','they','then','than','your','about','which','were','their','would','could','should','been','because','while','only','more','most','some','over','after','before','other','there','these','those','will','just','also','make','made','does','doing','still','open','concluded','working']);
-  return Array.from(new Set(
-    t.toLowerCase().replace(/[^a-z0-9\s]/g,' ').split(/\s+/).filter(w => w.length > 3 && !stop.has(w))
-  )).slice(0, 40);
-}
+<!-- ================================================================== -->
+<h2 id="library">11. Saved knowledge library</h2>
+<div class="mock"><div class="mock__bar"><i></i><i></i><i></i> /library · 1440px</div>
+<div class="mock__body">
+  <div class="topbar"><strong>Library</strong><span><input class="input" style="width:280px;display:inline-block" placeholder="Search saved summaries"> <button class="btn btn--ghost btn--sm">Show archived</button></span></div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s4)">
+    <div class="card"><span class="pill pill--saved">Saved · v2</span><h4 style="margin:var(--s2) 0">State-based CRDTs converge via semilattice joins</h4><p style="font-size:var(--t-sm);color:var(--ink-70)">Merge is a join on a join-semilattice: commutative, associative, idempotent…</p><p style="font-size:var(--t-xs);color:var(--ink-50);margin-top:var(--s3)">Updated today · 2 sources</p></div>
+    <div class="card"><span class="pill pill--saved">Saved · v1</span><h4 style="margin:var(--s2) 0">Why Argon2id is memory-hard</h4><p style="font-size:var(--t-sm);color:var(--ink-70)">Memory cost makes GPU and ASIC attacks expensive…</p><p style="font-size:var(--t-xs);color:var(--ink-50);margin-top:var(--s3)">Updated yesterday · 1 source</p></div>
+    <div class="card" style="opacity:.7"><span class="pill pill--muted">Archived</span><h4 style="margin:var(--s2) 0">Postgres ts_rank vs ts_rank_cd</h4><p style="font-size:var(--t-sm);color:var(--ink-70)">Cover density rewards proximity…</p><p style="font-size:var(--t-xs);color:var(--ink-50);margin-top:var(--s3)">Archived Mon</p></div>
+  </div>
+</div></div>
 
-/* --- knowledge retrieval (assumption A1 + A2) ----------------------------
-   Deliberately transparent: keyword overlap against CONFIRMED summaries only.
-   Drafts and raw transcripts are never consulted. */
-function askKnowledge(q){
-  const question = q.trim(); if (!question) return;
-  state.askBusy = true; state.askResult = null; render();
-  later(() => {
-    const low = ' ' + question.toLowerCase().replace(/[^a-z0-9\s]/g,' ') + ' ';
-    const scored = state.summaries.map(s => {
-      const hits = (s.keywords||[]).filter(k => low.includes(' '+k) || low.includes(k+' ')).length;
-      const gapHits = (s.gaps||[]).filter(g => low.includes(g)).length;
-      return { s, hits, gapHits };
-    }).filter(r => r.hits > 0).sort((a,b) => b.hits - a.hits);
+<table>
+<tr><th>Element</th><th>Behavior</th></tr>
+<tr><td>List</td><td>Cards with the saved pill and version number, title, first 160 characters of the body as plain text, updated time, source count. Sorted by updated time. Cursor-paged with "Load more".</td></tr>
+<tr><td>Search</td><td>Full-text over title and body, results ranked; short queries also match titles by substring. "No summaries match 'x'" with a clear-search action. Search runs on submit or after 400ms pause.</td></tr>
+<tr><td>Empty</td><td>"Nothing saved yet. Summarize a conversation to keep what you worked out." with a "Go to conversations" action.</td></tr>
+<tr><td>Archive</td><td>From the detail screen. Archived entries leave the default list and knowledge answers, remain searchable under "Show archived", and can be unarchived. <span class="ref">R-05</span></td></tr>
+<tr><td>Detail</td><td>Title, saved pill with version, rendered Markdown body, sources block, "Open the conversation" action, "Edit" and "Archive" actions, a versions list with dates. When the conversation was deleted, the open action is replaced with "Source conversation deleted". <span class="ref">R-32</span></td></tr>
+<tr><td>Reopen conversation</td><td>Navigates to <code>/c/:id</code>. Opening a conversation never changes what knowledge answers can see.</td></tr>
+</table>
 
-    let coverage = 'none', used = [], gaps = [], body = '';
-    if (!scored.length){
-      coverage = 'none';
-      body = 'Nothing in your saved knowledge touches this. You have '+state.summaries.length+
-             ' confirmed '+(state.summaries.length===1?'summary':'summaries')+
-             ', and none of them cover it.\n\nI have not filled the gap with anything from outside — a knowledge answer only draws on what you confirmed. If you want an outside answer, run it as a separate web search.';
-    } else {
-      used = scored.slice(0,3).map(r => r.s);
-      const top = scored[0];
-      const gapHit = scored.some(r => r.gapHits > 0);
-      coverage = (top.hits >= 2 && !gapHit) ? 'full' : 'partial';
-      const cite = (s, n) => '[[K'+n+'|'+s.id+']]';
-      if (coverage === 'full'){
-        body = 'Your saved knowledge covers this.\n\n' + summaryLead(used[0]) + ' ' + cite(used[0],1) +
-               (used[1] ? '\n\nThere is related material in ' + used[1].title.toLowerCase() + ' ' + cite(used[1],2) + ', if you want the wider context.' : '');
-      } else {
-        body = 'Partly. ' + summaryLead(used[0]) + ' ' + cite(used[0],1) +
-               '\n\nThat covers the shape of the question but not all of what you asked, so I have stopped where your saved knowledge stops rather than filling in around it.';
-        gaps = (top.s.gaps||[]).filter(g => low.includes(g));
-        if (!gaps.length) gaps = ['The saved summary touches this topic once but does not go into the specific case you asked about.'];
-        else gaps = gaps.map(g => 'Nothing confirmed about ' + g + ' — it is listed as still open in "' + top.s.title + '".');
-      }
-    }
-    state.askBusy = false;
-    state.askResult = { question, coverage, body, used, gaps, web:null, webBusy:false };
-    render();
-  }, 780);
-}
-function summaryLead(s){
-  const line = (s.body.split('\n').find(l => l.startsWith('- ')) || '').replace(/^- /,'');
-  return line ? line.replace(/\s+$/,'') : s.title;
-}
-/* Separate, explicitly requested web search (never mixed into the answer). */
-function runWebSearch(){
-  const r = state.askResult; if (!r || r.webBusy) return;
-  r.webBusy = true; render();
-  later(() => {
-    const plan = pickReply(r.question);
-    r.webBusy = false;
-    r.web = { text: plan.text, sources: plan.sources.length ? plan.sources : ['pricing'] };
-    render();
-  }, 1100);
-}
+<!-- ================================================================== -->
+<h2 id="ask">12. Knowledge questions and citations</h2>
+<div class="mock"><div class="mock__bar"><i></i><i></i><i></i> /ask · 1440px · answered and insufficient evidence</div>
+<div class="mock__body" style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s5)">
+  <div>
+    <div class="composer" style="margin-bottom:var(--s4)"><div>Why do CRDT merges not need ordering?</div><div class="composer__row"><span style="color:var(--ink-50)">Answers only from your saved summaries</span><button class="btn btn--primary btn--sm">Ask</button></div></div>
+    <div class="msg msg--assistant"><div class="msg__meta"><span class="pill pill--saved">From your knowledge</span> · gpt-oss-120b</div>
+      <div class="msg__body">Because merge is a join on a join-semilattice, it is commutative and associative, so replicas can apply states in any order and still reach the same result <span class="cite">1</span>. Your notes do not cover how delta-state variants keep this guarantee.</div>
+      <div class="card" style="margin-top:var(--s3);padding:var(--s3)"><strong style="font-size:var(--t-sm)">Cited summaries</strong><ol style="padding-left:18px;margin:6px 0 0;font-size:var(--t-sm)"><li><a href="#">State-based CRDTs converge via semilattice joins</a> · v2 · <a href="#">open conversation</a></li></ol></div>
+    </div>
+  </div>
+  <div>
+    <div class="composer" style="margin-bottom:var(--s4)"><div>What is the Byzantine fault tolerance of Raft?</div><div class="composer__row"><span style="color:var(--ink-50)">Answers only from your saved summaries</span><button class="btn btn--primary btn--sm">Ask</button></div></div>
+    <div class="empty" style="background:var(--surface);border:var(--bw) solid var(--line);border-radius:var(--r-lg)"><h4>Nothing in your library covers this</h4><p style="margin:0 auto var(--s4)">No saved summary matched. Nothing was generated.</p><button class="btn btn--secondary">Start a conversation with research</button></div>
+  </div>
+</div></div>
 
-/* ------------------------------------------------------------ 6. RENDER */
-function richText(t, srcIds){
-  const parts = esc(t).split(/\n\n+/).map(block => {
-    const lines = block.split('\n');
-    if (lines.every(l => l.trim().startsWith('- '))){
-      return '<ul>' + lines.map(l => '<li>' + inlineCite(l.replace(/^\s*- /,''), srcIds) + '</li>').join('') + '</ul>';
-    }
-    return '<p>' + inlineCite(block.replace(/\n/g,'<br>'), srcIds) + '</p>';
-  });
-  return parts.join('');
-}
-function inlineCite(t, srcIds){
-  if (!srcIds || !srcIds.length) return t;
-  return t.replace(/\[(\d)\]/g, (m, n) => {
-    const id = srcIds[Number(n)-1];
-    if (!id) return '';
-    return '<button class="cite" data-act="src" data-src="'+id+'" aria-label="Source '+n+': '+esc(SOURCES[id].title)+'">'+n+'</button>';
-  });
-}
-function docBody(md, opts={}){
-  const out = [];
-  let list = null;
-  md.split('\n').forEach(raw => {
-    const line = raw.trim();
-    if (!line){ if (list){ out.push('<ul>'+list.join('')+'</ul>'); list=null; } return; }
-    if (line.startsWith('# ')){
-      if (list){ out.push('<ul>'+list.join('')+'</ul>'); list=null; }
-      out.push('<h3>'+esc(line.slice(2))+'</h3>');
-    } else if (line.startsWith('- ')){
-      (list = list || []).push('<li>'+esc(line.slice(2))+'</li>');
-    } else {
-      if (list){ out.push('<ul>'+list.join('')+'</ul>'); list=null; }
-      out.push('<p>'+esc(line)+'</p>');
-    }
-  });
-  if (list) out.push('<ul>'+list.join('')+'</ul>');
-  return out.join('');
-}
+<table>
+<tr><th>Element</th><th>Behavior</th></tr>
+<tr><td>Question</td><td>Single field, 1 to 2,000 characters, submit with Enter. The footer states plainly that answers come only from saved summaries.</td></tr>
+<tr><td>Streaming answer</td><td>Same streaming rules as replies. Citations arrive first and render as a "Cited summaries" card; markers in the text are rendered as green cite chips that scroll to the card entry. <span class="ref">R-17</span></td></tr>
+<tr><td>Gaps</td><td>The model is instructed to say what the summaries do not cover; that sentence is part of the answer text, not a separate classifier. No "partly supported" label exists.</td></tr>
+<tr><td>Insufficient evidence</td><td>No summary matched: empty state above, no model call, and one action that opens a new conversation with the question pre-filled and the research toggle on (when research is configured). Web results never appear on this screen. <span class="ref">R-17</span></td></tr>
+<tr><td>Follow the citation</td><td>The summary title opens <code>/library/:id</code>; "open conversation" opens the source thread.</td></tr>
+<tr><td>Empty library</td><td>"No knowledge to ask yet" with a link to conversations.</td></tr>
+<tr><td>History</td><td>Answers are not stored. Navigating away clears the answer; the question text is kept in local storage. <span class="ref">R-33</span></td></tr>
+</table>
 
-function render(){
-  captureUI();
-  const app = $('#app');
-  let html = '';
-  if (state.route === 'entry'){
-    html = viewEntry();
-  } else {
-    html = demobar() + '<div class="shell">' + rail() + '<main class="main" id="main" tabindex="-1">' +
-      ({ chat: viewChat, review: viewReview, library: viewLibrary, detail: viewDetail, ask: viewAsk }[state.route] || viewChat)() +
-      '</main></div>' + tabbar();
-  }
-  app.innerHTML = html;
-  restoreUI();
-  state.pinStream = false;
-  autoGrowAll();
-}
-function autoGrowAll(){ $$('[data-grow]').forEach(grow); }
-function grow(ta){ ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'; }
+<!-- ================================================================== -->
+<h2 id="account">13. Account</h2>
+<p>Display name edit, change password (current, new, confirm; signs out other sessions), and sign out. Google-only accounts see "You sign in with Google" instead of the password form. There is no delete-account action in v1; the screen states that the operator can delete an account on request.</p>
 
-function demobar(){
-  return '<div class="demobar">'+
-    '<span class="demobar__dot" aria-hidden="true"></span>'+
-    '<span class="demobar__text">Design prototype — sign-in, AI replies and web search are simulated. No data leaves this page.</span>'+
-    '<button class="demobar__btn" data-act="demo-panel">Demo controls</button>'+
-  '</div>';
-}
-function rail(){
-  const nav = [
-    ['chat','chat','Conversation', state.conversations.length],
-    ['library','book','Knowledge', state.summaries.length],
-    ['ask','ask','Ask my knowledge', null]
-  ];
-  const current = state.route === 'detail' ? 'library' : (state.route === 'review' ? 'chat' : state.route);
-  return '<nav class="rail" aria-label="Main">'+
-    '<div class="brand">'+
-      '<span class="brand__mark" aria-hidden="true" style="color:var(--trail)">'+icon('trail',22)+'</span>'+
-      '<span class="brand__name">Nuroli</span>'+
-    '</div>'+
-    '<div class="nav">'+
-      nav.map(([r,ic,label,count]) =>
-        '<button class="nav__item" data-act="go" data-route="'+r+'" '+(current===r?'aria-current="page"':'')+'>'+
-          icon(ic,18)+'<span>'+label+'</span>'+
-          (count!=null ? '<span class="nav__count">'+count+'</span>' : '')+
-        '</button>').join('')+
-    '</div>'+
-    '<div class="rail__foot">'+
-      '<button class="nav__item" data-act="new-conv">'+icon('plus',18)+'<span>New question</span></button>'+
-      '<div class="who">'+
-        '<span class="avatar" aria-hidden="true">'+esc(initials(state.user))+'</span>'+
-        '<span style="min-width:0">'+
-          '<span class="who__name">'+esc(state.user ? state.user.name : 'Demo user')+'</span>'+
-          '<span class="who__mail">'+esc(state.user ? state.user.email : '')+'</span>'+
-        '</span>'+
-        '<button class="iconbtn" data-act="signout" title="Sign out" aria-label="Sign out">'+icon('logout',16)+'</button>'+
-      '</div>'+
-    '</div>'+
-  '</nav>';
-}
-function tabbar(){
-  const current = state.route === 'detail' ? 'library' : (state.route === 'review' ? 'chat' : state.route);
-  const items = [['chat','chat','Conversation'],['library','book','Knowledge'],['ask','ask','Ask']];
-  return '<nav class="tabbar" aria-label="Main">'+
-    items.map(([r,ic,l]) => '<button class="tabbar__item" data-act="go" data-route="'+r+'" '+(current===r?'aria-current="page"':'')+'>'+
-      icon(ic,20)+'<span>'+l+'</span></button>').join('')+
-  '</nav>';
-}
-function initials(u){
-  if (!u) return 'D';
-  return u.name.split(/\s+/).map(w => w[0]).slice(0,2).join('').toUpperCase();
-}
+<!-- ================================================================== -->
+<h2 id="states">14. State catalogue</h2>
+<table>
+<tr><th>Screen</th><th>Empty</th><th>Loading</th><th>Partial or degraded</th><th>Insufficient</th><th>Error</th></tr>
+<tr><td>Conversation list</td><td>"No conversations yet" + New</td><td>Three skeleton rows</td><td>—</td><td>—</td><td>Inline alert + Retry</td></tr>
+<tr><td>Thread</td><td>"Start with a real question."</td><td>Skeleton messages on first load</td><td>Stopped reply with partial text; research skipped line; length-limit pill</td><td>—</td><td>Failed reply with message + Retry; session banner on 401</td></tr>
+<tr><td>Summary review</td><td>"No draft open. Summaries start from a conversation."</td><td>"Drafting a summary from N messages" + Cancel</td><td>Stale revision reloaded notice</td><td>—</td><td>Generation failed + Try again; validation inline</td></tr>
+<tr><td>Library</td><td>"Nothing saved yet"</td><td>Skeleton cards</td><td>"No summaries match" for search</td><td>—</td><td>Inline alert + Retry</td></tr>
+<tr><td>Summary detail</td><td>—</td><td>Skeleton</td><td>"Source conversation deleted"</td><td>—</td><td>"Summary not found" with link to library</td></tr>
+<tr><td>Ask</td><td>"No knowledge to ask yet"</td><td>Citations card skeleton then streaming</td><td>Answer states gaps in prose</td><td>"Nothing in your library covers this" + research action</td><td>Failed answer + Retry</td></tr>
+<tr><td>Entry</td><td>—</td><td>Busy button</td><td>Google hidden when not configured</td><td>—</td><td>Field or form errors; closed registration</td></tr>
+</table>
+<p>Every error state shows the API's message verbatim when it comes from the documented envelope, plus a request id in small text for support. Unknown errors show "Something went wrong on this installation" with the request id.</p>
 
-/* --- A. ENTRY ------------------------------------------------------------ */
-function viewEntry(){
-  const t = state.authTab, f = state.entryFields;
-  return '<div class="entry">'+
-    '<section class="entry__pitch">'+ contour(0.55) +
-      '<div class="entry__inner">'+
-        '<div class="entry__brand"><span style="color:var(--trail)">'+icon('trail',24)+'</span>'+
-          '<span class="brand__name">Nuroli</span></div>'+
-        '<h1>Keep what you worked out, not just what you asked.</h1>'+
-        '<p class="entry__lede">Ask, follow the thread as far as it goes, then decide for yourself what was worth keeping. Only the conclusions you confirm become knowledge you can question later.</p>'+
-        '<div class="trailsteps">'+
-          step('Ask and follow up','One conversation. Switch models between replies when the question changes shape.')+
-          step('Draft a summary','Nuroli proposes what you concluded. You edit it. Nothing is saved until you confirm.')+
-          step('Ask across what you kept','Answers come from confirmed summaries only, with the gaps named rather than filled in.')+
-        '</div>'+
-        '<p class="entry__note">A design prototype. Accounts, replies and searches are simulated in your browser; nothing is sent anywhere.</p>'+
-      '</div>'+
-    '</section>'+
-    '<section class="entry__panel">'+
-      '<div class="authbox">'+
-        '<div class="segmented" role="tablist" aria-label="Account">'+
-          '<button role="tab" id="tab-signin" aria-selected="'+(t==='signin')+'" aria-controls="authform" data-act="authtab" data-tab="signin">Sign in</button>'+
-          '<button role="tab" id="tab-register" aria-selected="'+(t==='register')+'" aria-controls="authform" data-act="authtab" data-tab="register">Create account</button>'+
-        '</div>'+
-        '<h2>'+(t==='signin' ? 'Welcome back' : 'Create your account')+'</h2>'+
-        '<p class="authbox__sub">'+(t==='signin'
-          ? 'Your conversations and saved knowledge are private to you.'
-          : 'One account, your own trail. Takes a moment.')+'</p>'+
-        '<form class="authform" id="authform" role="tabpanel" aria-labelledby="tab-'+t+'" novalidate>'+
-          (t==='register' ? field('Name','text','auth-name','name','Your name', f.name) : '')+
-          field('Email','email','auth-email','email','you@example.com', f.email)+
-          field('Password','password','auth-pass','password','At least 8 characters', f.password, 'Simulated. Do not enter a real password.')+
-          '<button type="submit" class="btn btn--primary btn--lg btn--block" data-act="auth-submit">'+
-            (t==='signin' ? 'Sign in' : 'Create account')+'</button>'+
-        '</form>'+
-        '<div class="authbox__or">or</div>'+
-        '<button class="btn btn--secondary btn--lg btn--block" data-act="demo-enter">'+icon('trail',18)+'Enter the demo workspace</button>'+
-        '<p class="field__hint" style="margin-top:12px;text-align:center">Loads a seeded account with three conversations and three saved summaries.</p>'+
-      '</div>'+
-    '</section>'+
-  '</div>';
-}
-function step(t,d){
-  return '<div class="trailstep"><div class="trailstep__gutter"><span class="trailstep__blaze"></span><span class="trailstep__line"></span></div>'+
-    '<div class="trailstep__body"><div class="trailstep__t">'+esc(t)+'</div><div class="trailstep__d">'+esc(d)+'</div></div></div>';
-}
-function field(label, type, id, fk, ph, val, hint){
-  /* Errors are attached to the field that caused them, announced via
-     aria-describedby, and carry an icon + words so colour is not the only signal. */
-  const err = (state.authError && state.authError.field === fk) ? state.authError.message : null;
-  return '<div class="field'+(err?' field--error':'')+'"><label class="field__label" for="'+id+'">'+esc(label)+'</label>'+
-    '<input class="input" type="'+type+'" id="'+id+'" data-fk="'+fk+'" data-act="authinput" name="'+fk+'" '+
-    'placeholder="'+esc(ph)+'" value="'+esc(val||'')+'" autocomplete="off"'+
-    (err ? ' aria-invalid="true" aria-describedby="'+id+'-err"' : '')+'>'+
-    (err ? '<p class="field__error" id="'+id+'-err">'+icon('warn',13)+'<span>'+esc(err)+'</span></p>' : '')+
-    (hint ? '<p class="field__hint">'+esc(hint)+'</p>' : '')+'</div>';
-}
+<!-- ================================================================== -->
+<h2 id="responsive">15. Responsive behavior</h2>
+<div class="mock mock--phone"><div class="mock__bar"><i></i><i></i><i></i> /c/:id · 390px</div>
+<div class="mock__body" style="padding:var(--s3)">
+  <div class="topbar" style="margin-bottom:var(--s3)"><span>‹ <strong>How do CRDTs converge?</strong></span><button class="btn btn--secondary btn--sm">Summarize</button></div>
+  <div class="msg msg--user"><div class="msg__body">Is there a formal proof that state-based CRDTs converge?</div></div>
+  <div class="msg msg--assistant"><div class="msg__meta">gpt-oss-120b · <span class="pill pill--web">Researched</span></div><div class="msg__body" style="font-size:var(--t-base)">Yes. State-based CRDTs converge because merge is a join over a join-semilattice… [1]</div><div class="sources">2 sources · <a href="#">view</a></div></div>
+  <div class="composer"><div style="color:var(--ink-30)">Ask a follow-up…</div><div class="composer__row"><span class="toggle"><i></i>Research</span><button class="btn btn--primary btn--sm">Send</button></div></div>
+  <div class="tabbar" style="margin:var(--s3) calc(-1 * var(--s3)) calc(-1 * var(--s3))"><span aria-current="page">Chats</span><span>Library</span><span>Ask</span><span>Account</span></div>
+</div></div>
+<table>
+<tr><th>Width</th><th>Layout</th></tr>
+<tr><td>≥ 1100px</td><td>Rail with labels, context list, main column at 68ch measure centered in the remaining space.</td></tr>
+<tr><td>821 to 1099px</td><td>Rail collapses to icons with tooltips; context list stays.</td></tr>
+<tr><td>≤ 820px</td><td>Single column. Bottom tab bar. Lists are full screens; threads push with a back control. Composer pinned above the tab bar with safe-area padding. Sources open as a bottom sheet. Summary review stacks editor over a collapsible conversation sheet with a sticky action footer.</td></tr>
+<tr><td>Any width</td><td>No horizontal scrolling. Long words and URLs wrap. Tables and code blocks in Markdown scroll inside their own container. Touch targets are at least 44×44px on touch devices.</td></tr>
+</table>
 
-/* --- B/C. CHAT ----------------------------------------------------------- */
-function viewChat(){
-  const conv = activeConv();
-  return '<div class="work">'+ convListPanel() +
-    '<div class="thread">'+
-      threadHead(conv)+
-      '<div class="stream" data-scroll="stream">'+
-        '<div class="stream__inner">'+ (conv ? conv.messages.map(m => msgHtml(m)).join('') : starterPanel()) +'</div>'+
-      '</div>'+
-      composer(conv)+
-    '</div>'+
-  '</div>';
-}
-function convListPanel(){
-  const items = state.conversations.slice().sort((a,b) => b.updatedAt - a.updatedAt);
-  return '<aside class="convlist" aria-label="Your conversations">'+
-    '<div class="convlist__head">'+
-      '<div class="convlist__title">Conversations</div>'+
-      '<button class="btn btn--secondary btn--sm" data-act="new-conv">'+icon('plus',15)+'New question</button>'+
-    '</div>'+
-    '<div class="convlist__scroll" data-scroll="convlist">'+
-      (items.length ? items.map(c => {
-        const saved = summaryForConv(c.id);
-        return '<button class="convitem" data-act="open-conv" data-id="'+c.id+'" '+
-          (c.id===state.activeConvId?'aria-current="true"':'')+'>'+
-          '<span class="convitem__t">'+esc(c.title)+'</span>'+
-          '<span class="convitem__m">'+
-            '<span>'+relDay(c.updatedAt)+'</span><span aria-hidden="true">·</span><span>'+c.messages.length+' messages</span>'+
-            (saved ? '<span class="convitem__saved">'+icon('check',12)+'Saved</span>' : '')+
-          '</span></button>';
-      }).join('')
-      : '<p class="field__hint" style="padding:12px">No conversations yet. Your first question starts one.</p>')+
-    '</div>'+
-  '</aside>';
-}
-function threadHead(conv){
-  const saved = conv ? summaryForConv(conv.id) : null;
-  const canSummarise = conv && conv.messages.some(m => m.role==='ai' && m.text && !m.streaming);
-  return '<header class="thread__head">'+
-    (isMobile() ? '<button class="iconbtn" data-act="conv-sheet" aria-label="Show conversations">'+icon('list',18)+'</button>' : '')+
-    '<div class="thread__titlewrap">'+
-      '<h1 class="thread__title">'+esc(conv ? conv.title : 'New question')+'</h1>'+
-      '<p class="thread__meta">'+ (conv
-        ? (conv.messages.length + ' messages · started ' + relDay(conv.createdAt) + (saved ? ' · summary saved' : ''))
-        : 'Nothing saved until you confirm a summary') +'</p>'+
-    '</div>'+
-    '<div class="thread__actions">'+
-      (saved ? '<button class="btn btn--secondary btn--sm" data-act="open-summary" data-id="'+saved.id+'" aria-label="View saved summary">'+icon('book',15)+'<span>View summary</span></button>' : '')+
-      (canSummarise ? '<button class="btn btn--primary btn--sm" data-act="summarise" aria-label="'+
-        (state.draft && state.draft.convId===conv.id ? 'Resume the unsaved summary draft' : 'Summarise this conversation')+
-        '">'+icon('spark',15)+'<span>'+
-        (state.draft && state.draft.convId===conv.id ? 'Resume draft' : 'Summarise')+'</span></button>' : '')+
-    '</div>'+
-  '</header>';
-}
-function msgHtml(m){
-  if (m.role === 'user'){
-    return '<article class="msg msg--user" data-msg="'+m.id+'">'+
-      '<div class="msg__head"><span class="msg__who">You</span><span class="msg__time">'+fmtTime(m.ts)+'</span></div>'+
-      '<div class="msg__body">'+richText(m.text)+'</div></article>';
-  }
-  const model = MODELS[m.model] || MODELS['atlas-3'];
-  let body = '';
-  if (m.searching){
-    body = '<div class="searching">'+icon('globe',15)+
-      '<span class="spinner" aria-hidden="true"></span>'+
-      '<span class="searching__steps" data-searchstep="'+m.id+'" role="status">'+esc(SEARCH_STEPS[0])+'</span></div>';
-  } else if (m.error){
-    body = '<div class="notice notice--error">'+icon('warn',16)+
-      '<span><strong>Reply failed.</strong> The connection dropped before an answer came back. Nothing was lost — your question is still above.</span></div>';
-  } else {
-    body = '<div class="msg__body">'+richText(m.text, m.sources)+(m.streaming?'<span class="caret" aria-hidden="true"></span>':'')+'</div>';
-  }
-  const srcRow = (!m.streaming && !m.error && m.sources && m.sources.length)
-    ? '<div class="msg__sources"><button class="srcbtn" data-act="src" data-src="'+m.sources[0]+'">'+icon('globe',13)+
-      m.sources.length+' '+(m.sources.length===1?'source':'sources')+'</button>'+
-      '<span class="field__hint" style="margin:0">Opens beside the conversation</span></div>' : '';
-  const tools = (m.streaming || m.searching)
-    ? '<div class="msg__tools"><button class="btn btn--secondary btn--sm" data-act="stop" data-id="'+m.id+'">'+icon('stop',14)+'Stop</button></div>'
-    : ((m.error || m.stopped)
-      ? '<div class="msg__tools"><button class="btn btn--secondary btn--sm" data-act="retry" data-id="'+m.id+'">'+icon('retry',14)+'Retry</button>'+
-        (m.stopped ? '<span class="field__hint" style="margin:0">Stopped early</span>' : '')+'</div>'
-      : '');
-  return '<article class="msg msg--ai" data-msg="'+m.id+'">'+
-    '<div class="msg__head"><span class="msg__who">Nuroli</span>'+
-      '<span class="pill pill--model">'+esc(model.name)+'</span>'+
-      '<span class="msg__time">'+fmtTime(m.ts)+'</span></div>'+
-    body + srcRow + tools +
-  '</article>';
-}
-function starterPanel(){
-  const returning = state.conversations.length > 0;
-  const last = returning ? state.conversations.slice().sort((a,b)=>b.updatedAt-a.updatedAt)[0] : null;
-  return '<div class="starter">'+
-    '<h2>'+(returning ? 'What are you working out today?' : 'Start with a real question.')+'</h2>'+
-    '<p class="starter__p">'+(returning
-      ? 'This starts a new conversation. Your earlier ones are still in the list, with their saved summaries attached.'
-      : 'Ask something you actually want to understand. Follow it as far as it goes — the summary comes at the end, and only if you confirm it.')+'</p>'+
-    (last ? '<button class="chip" data-act="open-conv" data-id="'+last.id+'" style="margin-bottom:24px">'+
-      icon('back',14)+' Continue “'+esc(last.title.slice(0,52))+'”</button>' : '')+
-    '<div class="chips" role="group" aria-label="Example questions">'+
-      STARTERS.map(s => '<button class="chip" data-act="starter" data-q="'+esc(s)+'">'+esc(s)+'</button>').join('')+
-    '</div>'+
-  '</div>';
-}
-function composer(conv){
-  const key = conv ? conv.id : 'new';
-  const val = state.composerDrafts[key] || '';
-  const busy = conv && conv.messages.some(m => m.streaming || m.searching);
-  return '<div class="composer"><div class="composer__inner">'+
-    '<form class="composer__box" data-act="send-form">'+
-      '<label class="sr" for="composer">Your question</label>'+
-      '<textarea class="composer__ta" id="composer" data-fk="composer" data-grow rows="1" '+
-        'placeholder="'+(conv ? 'Ask a follow-up…' : 'Ask anything you want to understand…')+'">'+esc(val)+'</textarea>'+
-      '<div class="composer__bar">'+
-        '<div class="modelpick">'+
-          '<label class="modelpick__label" for="model">Next reply from</label>'+
-          '<select class="select" id="model" data-act="model">'+
-            MODEL_ORDER.map(id => '<option value="'+id+'" '+(state.nextModel===id?'selected':'')+'>'+
-              esc(MODELS[id].name)+' — '+esc(MODELS[id].blurb)+'</option>').join('')+
-          '</select>'+
-        '</div>'+
-        '<div class="composer__right">'+
-          '<button type="submit" class="sendbtn" '+(!val.trim()||busy?'disabled':'')+' aria-label="Send question">'+icon('send',18)+'</button>'+
-        '</div>'+
-      '</div>'+
-    '</form>'+
-    '<p class="composer__hint">Earlier replies keep the model that wrote them. Enter sends, Shift+Enter adds a line.</p>'+
-  '</div></div>';
-}
+<!-- ================================================================== -->
+<h2 id="a11y">16. Keyboard navigation and accessibility</h2>
+<p>Target: WCAG 2.2 AA, checked with axe in end-to-end tests on every screen. <span class="ref">R-27</span></p>
+<table>
+<tr><th>Requirement</th><th>Rule</th></tr>
+<tr><td>Landmarks</td><td><code>header</code>, <code>nav</code> (rail and tab bar), <code>main</code>, and <code>aside</code> for drawers. A skip link to the main column is the first focusable element.</td></tr>
+<tr><td>Headings</td><td>One h1 per screen (conversation title, "Library", "Ask my knowledge", "Review before saving"). Message meta uses no headings.</td></tr>
+<tr><td>Keyboard</td><td>Every action reachable by Tab in reading order. <span class="kbd">Enter</span> sends; <span class="kbd">Shift</span>+<span class="kbd">Enter</span> newline; <span class="kbd">Esc</span> stops streaming when the composer is focused, closes drawers and dialogs; <span class="kbd">/</span> focuses library search on the library screen when focus is not in a text field. No other shortcuts in v1.</td></tr>
+<tr><td>Focus management</td><td>Drawers and dialogs trap focus and restore it to the opener. After send, focus stays in the composer. After Save to library, focus moves to the success banner's link. After route changes, focus moves to the screen's h1.</td></tr>
+<tr><td>Live regions</td><td>Streaming text is not announced token by token. A polite live region announces "Reply started", "Reply finished", "Reply stopped", "Reply failed", "Draft saved", and "Saved to your library". Errors use <code>role="alert"</code>.</td></tr>
+<tr><td>Names and roles</td><td>Toggle uses <code>role="switch"</code> with <code>aria-checked</code>. Icon-only buttons have <code>aria-label</code>. Pills are text, not colour alone.</td></tr>
+<tr><td>Forms</td><td>Labels bound with <code>for</code>; errors bound with <code>aria-describedby</code>; the first invalid field receives focus on submit.</td></tr>
+<tr><td>Motion and contrast</td><td>Reduced-motion honoured through tokens; all text at 4.5:1 or better; focus ring visible on every background.</td></tr>
+<tr><td>Zoom</td><td>Layouts work at 200% zoom and 320px effective width without loss of content.</td></tr>
+</table>
 
-/* --- D. SUMMARY REVIEW --------------------------------------------------- */
-function viewReview(){
-  const conv = convById(state.draft ? state.draft.convId : state.activeConvId);
-  if (state.generating){
-    return '<div class="gen">'+
-      '<span class="spinner" style="width:22px;height:22px;color:var(--trail)" aria-hidden="true"></span>'+
-      '<h2 style="font-family:var(--font-read);font-size:var(--t-xl)">Drafting a summary</h2>'+
-      '<p class="gen__steps" data-genstep role="status">'+esc(SUMMARY_STEPS[0])+'</p>'+
-      '<p class="field__hint" style="max-width:44ch">Nothing is saved yet. You will be able to edit every word before this becomes knowledge.</p>'+
-      '<button class="btn btn--ghost btn--sm" data-act="cancel-draft">Cancel</button>'+
-    '</div>';
-  }
-  const d = state.draft;
-  if (!d || !conv){
-    return '<div class="page"><div class="page__body"><div class="empty"><div class="empty__inner">'+
-      '<h3>No draft open</h3><p>Summaries start from a conversation.</p>'+
-      '<button class="btn btn--primary" data-act="go" data-route="chat">Back to the conversation</button>'+
-      '</div></div></div></div>';
-  }
-  const showRef = state.reviewTab === 'conversation';
-  return '<div class="review'+(showRef?' review--showref':'')+'">'+
-    '<div class="review__tabs" role="tablist" aria-label="Summary review">'+
-      '<button class="review__tab" role="tab" aria-selected="'+(!showRef)+'" data-act="reviewtab" data-tab="draft">Draft summary</button>'+
-      '<button class="review__tab" role="tab" aria-selected="'+showRef+'" data-act="reviewtab" data-tab="conversation">Conversation</button>'+
-    '</div>'+
-    '<aside class="review__ref" aria-label="Original conversation">'+
-      '<div class="review__refhead">'+
-        '<div class="convlist__title">'+esc(conv.title)+'</div>'+
-        '<p class="field__hint">Read-only while you review the draft.</p>'+
-      '</div>'+
-      '<div class="review__refscroll" data-scroll="ref">'+conv.messages.map(m => msgHtml(Object.assign({},m,{streaming:false,searching:false}))).join('')+'</div>'+
-    '</aside>'+
-    '<div class="review__edit">'+
-      '<header class="review__head">'+
-        '<div class="review__eyebrow">'+
-          '<span class="pill pill--draft">'+icon('edit',12)+'Unconfirmed draft</span>'+
-          '<span class="field__hint" style="margin:0">Not searchable until you save it</span>'+
-        '</div>'+
-        '<h1 class="review__h">Review before saving</h1>'+
-      '</header>'+
-      '<div class="review__scroll" data-scroll="review">'+
-        '<div class="review__form">'+
-          '<div class="field">'+
-            '<label class="field__label" for="dtitle">Title</label>'+
-            '<input class="input" id="dtitle" data-fk="dtitle" data-act="draft-title" value="'+esc(d.title)+'">'+
-            '<p class="field__hint">This is what you will scan for in the library later. Write the conclusion, not the topic.</p>'+
-          '</div>'+
-          '<div class="field">'+
-            '<label class="field__label" for="dbody">Summary</label>'+
-            '<textarea class="textarea review__ta" id="dbody" data-fk="dbody" data-act="draft-body">'+esc(d.body)+'</textarea>'+
-            '<p class="field__hint">Lines beginning with # are headings, lines beginning with - are points.</p>'+
-          '</div>'+
-          '<div class="notice notice--info">'+icon('info',16)+
-            '<span>'+d.sources.length+' '+(d.sources.length===1?'source':'sources')+' from this conversation will be attached. '+
-            d.models.map(m => esc(MODELS[m] ? MODELS[m].name : m)).join(' and ')+' contributed to the replies.</span></div>'+
-        '</div>'+
-      '</div>'+
-      '<footer class="review__foot">'+
-        '<button class="btn btn--primary" data-act="confirm-save" '+(state.saving?'disabled':'')+'>'+
-          (state.saving ? '<span class="spinner" aria-hidden="true"></span>Saving' : icon('checkcircle',16)+'Confirm and save')+'</button>'+
-        '<button class="btn btn--secondary" data-act="cancel-draft">Cancel</button>'+
-        '<button class="btn btn--danger btn--sm" data-act="discard-draft">Discard draft</button>'+
-        '<p class="review__footnote">Cancel keeps your edits and returns to the conversation. Discard throws them away.</p>'+
-      '</footer>'+
-    '</div>'+
-  '</div>';
-}
+<!-- ================================================================== -->
+<h2 id="copy">17. Copy rules</h2>
+<ul>
+<li>Sentence case everywhere. No exclamation marks. No "oops".</li>
+<li>Name the three content kinds consistently: <em>conversation</em>, <em>draft</em>, <em>saved summary</em> (in the <em>library</em>). Never "note", "document", or "memory".</li>
+<li>Say what happened and what to do next in one sentence each: "The model took too long to answer. Retry or try a shorter question."</li>
+<li>Never expose configuration values, hostnames, or keys in user-facing text.</li>
+<li>Web evidence is always "sources" or "from the web"; saved knowledge is always "from your library" or "your saved summaries".</li>
+<li>Destructive dialogs name the object and the consequence: "Discard this draft? Your saved summary, if any, is not affected."</li>
+</ul>
 
-/* --- E. LIBRARY ---------------------------------------------------------- */
-function viewLibrary(){
-  const q = state.librarySearch.trim().toLowerCase();
-  const all = state.summaries;
-  const list = q ? all.filter(s =>
-    (s.title + ' ' + s.body + ' ' + s.topic + ' ' + (s.keywords||[]).join(' ')).toLowerCase().includes(q)) : all;
-
-  let content;
-  if (!all.length){
-    content = '<div class="empty">'+contour(0.35)+'<div class="empty__inner">'+
-      '<h3>Nothing saved yet</h3>'+
-      '<p>Knowledge starts as a conversation. When one reaches a conclusion worth keeping, summarise it and confirm the draft — that is the only way anything gets in here.</p>'+
-      '<button class="btn btn--primary" data-act="new-conv">'+icon('plus',16)+'Start a conversation</button>'+
-    '</div></div>';
-  } else if (!list.length){
-    content = '<div class="empty"><div class="empty__inner">'+
-      '<h3>No summaries match “'+esc(state.librarySearch)+'”</h3>'+
-      '<p>Search covers titles, summary text and topics across your '+all.length+' saved '+(all.length===1?'entry':'entries')+'.</p>'+
-      '<button class="btn btn--secondary" data-act="clear-search">Clear search</button>'+
-    '</div></div>';
-  } else {
-    content = '<div class="grid">'+list.map(s => {
-      const preview = (s.body.split('\n').find(l => l.startsWith('- ')) || s.body.split('\n')[1] || '').replace(/^- /,'');
-      return '<button class="entrycard'+(s.id===state.justSavedId?' entrycard--new':'')+'" data-act="open-summary" data-id="'+s.id+'">'+
-        '<span class="entrycard__top">'+
-          '<span class="pill pill--confirmed">'+icon('check',12)+'Confirmed</span>'+
-          '<span class="pill pill--quiet">'+esc(s.topic)+'</span>'+
-          (s.id===state.justSavedId?'<span class="pill pill--draft">Just saved</span>':'')+
-        '</span>'+
-        '<span class="entrycard__t">'+esc(s.title)+'</span>'+
-        '<span class="entrycard__p">'+esc(preview.slice(0,150))+(preview.length>150?'…':'')+'</span>'+
-        '<span class="entrycard__foot">'+
-          '<span>'+fmtDate(s.savedAt)+'</span><span aria-hidden="true">·</span>'+
-          '<span>'+s.sources.length+' sources</span><span aria-hidden="true">·</span>'+
-          '<span>'+s.models.map(m => esc(MODELS[m]?MODELS[m].name:m)).join(', ')+'</span>'+
-        '</span></button>';
-    }).join('')+'</div>';
-  }
-
-  return '<div class="page" data-scroll="library">'+
-    '<div class="page__head"><div class="page__inner">'+
-      '<h1 class="page__title">Knowledge</h1>'+
-      '<p class="page__sub">Summaries you confirmed. These are the only thing “Ask my knowledge” can see — drafts and raw conversations are not searchable.</p>'+
-      '<div class="searchrow">'+
-        '<div class="searchwrap">'+icon('search',16)+
-          '<label class="sr" for="libsearch">Search saved summaries</label>'+
-          '<input class="input" id="libsearch" data-fk="libsearch" data-act="libsearch" placeholder="Search titles and text" value="'+esc(state.librarySearch)+'">'+
-        '</div>'+
-        (all.length ? '<span class="resultcount" role="status">'+list.length+' of '+all.length+' shown</span>' : '')+
-      '</div>'+
-    '</div></div>'+
-    '<div class="page__body"><div class="page__inner">'+content+'</div></div>'+
-  '</div>';
-}
-
-/* --- F. SUMMARY DETAIL --------------------------------------------------- */
-function viewDetail(){
-  const s = summaryById(state.activeSummaryId);
-  if (!s) return '<div class="page"><div class="page__body"><div class="empty"><div class="empty__inner"><h3>Summary not found</h3>'+
-    '<button class="btn btn--primary" data-act="go" data-route="library">Back to knowledge</button></div></div></div></div>';
-  const conv = convById(s.conversationId);
-  const justSaved = state.justSavedId === s.id;
-  return '<div class="page" data-scroll="detail">'+
-    '<div class="page__head"><div class="page__inner">'+
-      '<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">'+
-        '<button class="btn btn--ghost btn--sm" data-act="back-from-detail">'+icon('back',15)+
-          (state.askReturn ? 'Back to the answer' : 'Back to knowledge')+'</button>'+
-      '</div>'+
-      (justSaved ? '<div class="notice notice--ok" style="margin-bottom:16px">'+icon('checkcircle',16)+
-        '<span><strong>Saved.</strong> This is now part of your knowledge and can be found by “Ask my knowledge”.</span></div>' : '')+
-      '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">'+
-        '<span class="pill pill--confirmed">'+icon('check',12)+'Confirmed summary</span>'+
-        '<span class="pill pill--quiet">'+esc(s.topic)+'</span>'+
-      '</div>'+
-      '<h1 class="page__title" style="max-width:24ch">'+esc(s.title)+'</h1>'+
-      '<div class="doc__meta" style="margin-top:12px;margin-bottom:0">'+
-        '<span>Saved '+fmtDate(s.savedAt)+'</span><span aria-hidden="true">·</span>'+
-        '<span>'+s.models.map(m => esc(MODELS[m]?MODELS[m].name:m)).join(' and ')+'</span>'+
-      '</div>'+
-    '</div></div>'+
-    '<div class="page__body"><div class="doc">'+
-      '<div class="doc__body">'+docBody(s.body)+'</div>'+
-      '<div class="doc__sources">'+
-        '<h3>Sources from the original conversation</h3>'+
-        '<ul class="doc__srclist">'+ (s.sources.length ? s.sources.map(id => {
-          const src = SOURCES[id];
-          return '<li><a href="'+esc(src.url)+'" target="_blank" rel="noopener noreferrer">'+esc(src.title)+'</a> '+
-            '<span style="color:var(--ink-50)">— '+esc(src.site)+'</span></li>';
-        }).join('') : '<li style="color:var(--ink-50)">No web sources were used in this conversation.</li>')+'</ul>'+
-      '</div>'+
-      '<div style="margin-top:32px;display:flex;gap:8px;flex-wrap:wrap">'+
-        (conv ? '<button class="btn btn--primary" data-act="reopen-conv" data-id="'+conv.id+'">'+icon('chat',16)+'Reopen the full conversation</button>' : '')+
-        '<button class="btn btn--secondary" data-act="ask-about" data-id="'+s.id+'">'+icon('ask',16)+'Ask about this</button>'+
-      '</div>'+
-      (conv ? '<p class="field__hint" style="margin-top:12px">'+conv.messages.length+' messages, started '+fmtDate(conv.createdAt)+'. The full transcript stays available even though only this summary is searchable.</p>' : '')+
-    '</div></div>'+
-  '</div>';
-}
-
-/* --- G. ASK MY KNOWLEDGE ------------------------------------------------- */
-function viewAsk(){
-  const r = state.askResult;
-  return '<div class="page" data-scroll="ask">'+
-    '<div class="page__head"><div class="page__inner">'+
-      '<h1 class="page__title">Ask my knowledge</h1>'+
-      '<p class="page__sub">Questions here are answered from your '+state.summaries.length+' confirmed '+
-        (state.summaries.length===1?'summary':'summaries')+' only. If they do not cover it, you will be told so rather than answered from somewhere else.</p>'+
-    '</div></div>'+
-    '<div class="page__body"><div class="ask">'+
-      '<form class="askbox" data-act="ask-form">'+
-        '<div class="askbox__row">'+
-          '<label class="sr" for="askq">Ask across your saved knowledge</label>'+
-          '<textarea class="askbox__ta" id="askq" data-fk="askq" data-grow rows="1" placeholder="What do I already know about…?">'+esc(state.askInput)+'</textarea>'+
-          '<button type="submit" class="btn btn--primary" '+(!state.askInput.trim()||state.askBusy?'disabled':'')+'>'+
-            (state.askBusy ? '<span class="spinner" aria-hidden="true"></span>' : icon('search',16))+'Ask</button>'+
-        '</div>'+
-        '<div class="askscope">'+icon('book',14)+'<span>Searches confirmed summaries. Drafts and full transcripts are excluded.</span></div>'+
-      '</form>'+
-      (!state.summaries.length
-        ? '<div class="empty" style="margin-top:24px"><div class="empty__inner"><h3>No knowledge to ask yet</h3>'+
-          '<p>Confirm a summary first. Until then there is nothing here to answer from, and this page will not answer from anywhere else.</p>'+
-          '<button class="btn btn--primary" data-act="new-conv">Start a conversation</button></div></div>'
-        : '<div class="chips" style="margin-top:16px" role="group" aria-label="Example questions">'+
-          ASK_SAMPLES.map(q => '<button class="chip" data-act="ask-sample" data-q="'+esc(q)+'">'+esc(q)+'</button>').join('')+'</div>')+
-      (state.askBusy ? '<div class="answer"><div class="notice notice--info">'+
-        '<span class="spinner" aria-hidden="true"></span><span>Matching your question against confirmed summaries…</span></div></div>' : '')+
-      (r ? answerHtml(r) : '')+
-    '</div></div>'+
-  '</div>';
-}
-function answerHtml(r){
-  const meta = {
-    full:   ['coverage--full','answercard--full','check','Supported by your knowledge'],
-    partial:['coverage--partial','answercard--partial','warn','Partly supported'],
-    none:   ['coverage--none','answercard--none','info','Not covered']
-  }[r.coverage];
-  const body = esc(r.body).split(/\n\n+/).map(p =>
-    '<p>'+p.replace(/\[\[K(\d)\|(\w+)\]\]/g, (m,n,id) => {
-      const s = summaryById(id);
-      return '<button class="kcite" data-act="open-cite" data-id="'+id+'" aria-label="Open saved summary: '+esc(s?s.title:'')+'">'+
-        icon('book',11)+'Saved summary '+n+'</button>';
-    })+'</p>').join('');
-
-  return '<section class="answer" aria-label="Answer">'+
-    '<div class="answer__head">'+
-      '<span class="coverage '+meta[0]+'">'+icon(meta[2],13)+esc(meta[3])+'</span>'+
-      '<span class="field__hint" style="margin:0">From confirmed summaries only</span>'+
-    '</div>'+
-    '<div class="answercard '+meta[1]+'">'+
-      '<p class="answercard__q">You asked: '+esc(r.question)+'</p>'+
-      '<div class="answercard__body">'+body+'</div>'+
-      (r.gaps.length ? '<div class="gaps"><div class="gaps__t">'+icon('warn',14)+'What your knowledge does not cover</div>'+
-        '<ul>'+r.gaps.map(g => '<li>'+esc(g)+'</li>').join('')+'</ul></div>' : '')+
-      (r.used.length ? '<div class="usedlist"><div class="usedlist__t">Answered from '+r.used.length+' saved '+
-        (r.used.length===1?'summary':'summaries')+'</div>'+
-        r.used.map((s,i) => '<button class="usedref" data-act="open-cite" data-id="'+s.id+'">'+
-          '<span class="usedref__n">'+(i+1)+'</span><span class="usedref__t">'+esc(s.title)+'</span>'+
-          icon('external',14)+'</button>').join('')+'</div>' : '')+
-      (r.coverage !== 'full' ? '<div class="answer__next">'+
-        (r.web ? '' : '<button class="btn btn--secondary btn--sm" data-act="websearch" '+(r.webBusy?'disabled':'')+'>'+
-          (r.webBusy ? '<span class="spinner" aria-hidden="true"></span>Searching the web' : icon('globe',15)+'Search the web separately')+'</button>')+
-        '<button class="btn btn--secondary btn--sm" data-act="ask-in-chat">'+icon('chat',15)+'Open this as a conversation</button>'+
-      '</div>' : '')+
-      (r.web ? webHtml(r.web) : '')+
-    '</div>'+
-  '</section>';
-}
-function webHtml(w){
-  return '<div class="webcard">'+
-    '<div class="webcard__head">'+icon('globe',15)+'<span class="webcard__t">From the web — not your knowledge</span>'+
-      '<span class="pill pill--web">Unsaved</span></div>'+
-    '<div class="webcard__body">'+richText(w.text, w.sources)+'</div>'+
-    '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
-      w.sources.map(id => '<button class="srcbtn" data-act="src" data-src="'+id+'">'+icon('external',13)+esc(SOURCES[id].site)+'</button>').join('')+
-    '</div>'+
-    '<p class="webcard__note">'+icon('info',13)+'<span>Kept separate on purpose. Nothing here has been mixed into the answer above, and none of it is saved knowledge until you take it through a conversation and confirm a summary.</span></p>'+
-  '</div>';
-}
-
-/* ------------------------------------------------------ 7. OVERLAYS */
-let lastFocused = null;
-function openOverlay(html){
-  /* only remember the trigger if no overlay is already open, so re-rendering a
-     dialog in place does not lose the element focus must return to */
-  if (!$('#overlay [data-panel]')) lastFocused = document.activeElement;
-  $('#overlay').innerHTML = html;
-  const panel = $('#overlay [data-panel]');
-  if (panel){
-    const first = $(FOCUSABLE, panel);
-    (first || panel).focus();
-  }
-}
-function closeOverlay(){
-  $('#overlay').innerHTML = '';
-  if (lastFocused && document.contains(lastFocused)) lastFocused.focus();
-  lastFocused = null;
-}
-function openSources(targetId){
-  const conv = activeConv();
-  let ids = [];
-  if (conv){
-    const m = conv.messages.find(x => (x.sources||[]).includes(targetId));
-    if (m) ids = m.sources.slice();
-  }
-  if (state.askResult && state.askResult.web && state.askResult.web.sources.includes(targetId)) ids = state.askResult.web.sources.slice();
-  if (!ids.length) ids = [targetId];
-
-  openOverlay('<div class="scrim" data-act="close-overlay"></div>'+
-    '<aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-t" data-panel tabindex="-1">'+
-      '<div class="drawer__head">'+
-        '<div style="flex:1;min-width:0">'+
-          '<h2 class="drawer__title" id="drawer-t">Sources</h2>'+
-          '<p class="drawer__sub">Real public pages. Snippets are illustrative — no live research happened in this demo.</p>'+
-        '</div>'+
-        '<button class="iconbtn" data-act="close-overlay" aria-label="Close sources">'+icon('close',18)+'</button>'+
-      '</div>'+
-      '<div class="drawer__body">'+ ids.map((id,i) => {
-        const s = SOURCES[id];
-        return '<article class="source'+(id===targetId?' source--target':'')+'">'+
-          '<span class="source__n">'+(i+1)+'</span>'+
-          '<h3 class="source__t">'+esc(s.title)+'</h3>'+
-          '<p class="source__site">'+esc(s.site)+'</p>'+
-          '<blockquote class="source__q">'+esc(s.quote)+'</blockquote>'+
-          '<a class="source__link" href="'+esc(s.url)+'" target="_blank" rel="noopener noreferrer">'+
-            icon('external',14)+'Open '+esc(s.site)+'</a></article>';
-      }).join('') +'</div>'+
-      '<div class="drawer__foot">'+
-        '<button class="btn btn--secondary btn--block" data-act="close-overlay">Back to the conversation</button>'+
-        '<p class="field__hint" style="text-align:center;margin-top:8px">Your place in the conversation is kept.</p>'+
-      '</div>'+
-    '</aside>');
-}
-function openConvSheet(){
-  openOverlay('<div class="scrim" data-act="close-overlay"></div>'+
-    '<aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="cs-t" data-panel tabindex="-1">'+
-      '<div class="drawer__head"><div style="flex:1"><h2 class="drawer__title" id="cs-t">Conversations</h2>'+
-        '<p class="drawer__sub">'+state.conversations.length+' in total</p></div>'+
-        '<button class="iconbtn" data-act="close-overlay" aria-label="Close">'+icon('close',18)+'</button></div>'+
-      '<div class="drawer__body">'+
-        state.conversations.slice().sort((a,b)=>b.updatedAt-a.updatedAt).map(c => {
-          const saved = summaryForConv(c.id);
-          return '<button class="convitem" style="border-color:var(--line)" data-act="open-conv" data-id="'+c.id+'">'+
-            '<span class="convitem__t">'+esc(c.title)+'</span>'+
-            '<span class="convitem__m"><span>'+relDay(c.updatedAt)+'</span><span aria-hidden="true">·</span>'+
-            '<span>'+c.messages.length+' messages</span>'+
-            (saved?'<span class="convitem__saved">'+icon('check',12)+'Saved</span>':'')+'</span></button>';
-        }).join('') || '<p class="field__hint">No conversations yet.</p>'+
-      '</div>'+
-      '<div class="drawer__foot"><button class="btn btn--primary btn--block" data-act="new-conv">'+icon('plus',16)+'New question</button></div>'+
-    '</aside>');
-}
-function openDemoPanel(){
-  openOverlay('<div class="scrim" data-act="close-overlay"></div>'+
-    '<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dp-t" data-panel tabindex="-1">'+
-      '<h2 id="dp-t">Demo controls</h2>'+
-      '<p class="dialog__p">Separate from the product interface. These exist so the prototype can be reviewed, and would not ship.</p>'+
-      demoRow('Reset the demo','Restores the seeded account, conversations and summaries.','reset','Reset')+
-      demoRow('Show empty states','Signs in with no conversations and no saved knowledge.','empty','Load empty')+
-      demoRow('Break the next reply','The next answer fails once, so you can try the retry path.','fail', state.failNext ? 'Armed' : 'Arm error')+
-      demoRow('Storage','Local storage is '+(Store.ok?'available — your demo state survives a reload.':'unavailable — running from memory only.'),'noop','')+
-      '<div class="dialog__actions">'+
-        '<button class="btn btn--primary" data-act="close-overlay">Close</button>'+
-      '</div>'+
-    '</div>');
-}
-function demoRow(t,d,act,label){
-  return '<div class="demorow"><div class="demorow__body"><div class="demorow__t">'+esc(t)+'</div>'+
-    '<div class="demorow__d">'+esc(d)+'</div></div>'+
-    (label ? '<button class="btn btn--secondary btn--sm" data-act="demo-'+act+'">'+esc(label)+'</button>' : '')+'</div>';
-}
-function confirmDialog(title, msg, confirmLabel, act){
-  openOverlay('<div class="scrim" data-act="close-overlay"></div>'+
-    '<div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="cd-t" aria-describedby="cd-d" data-panel tabindex="-1">'+
-      '<h2 id="cd-t">'+esc(title)+'</h2><p class="dialog__p" id="cd-d">'+esc(msg)+'</p>'+
-      '<div class="dialog__actions">'+
-        '<button class="btn btn--secondary" data-act="close-overlay">Keep it</button>'+
-        '<button class="btn btn--danger" data-act="'+act+'">'+esc(confirmLabel)+'</button>'+
-      '</div></div>');
-}
-function toast(msg, kind){
-  const el = document.createElement('div');
-  el.className = 'toast';
-  el.innerHTML = (kind==='ok' ? '<span class="toast__ok">'+icon('checkcircle',16)+'</span>'
-                : kind==='err' ? '<span class="toast__err">'+icon('warn',16)+'</span>' : '')+
-                '<span>'+esc(msg)+'</span>';
-  $('#toasts').appendChild(el);
-  setTimeout(() => { el.style.opacity='0'; setTimeout(()=>el.remove(), 200); }, 3800);
-}
-
-/* -------------------------------------------------------- 8. EVENTS */
-function go(route){
-  state.route = route;
-  if (route !== 'detail') state.justSavedId = null;
-  if (route !== 'detail' && route !== 'ask') state.askReturn = null;
-  persist(); render();
-  const main = $('#main'); if (main) main.focus({preventScroll:true});
-}
-
-document.addEventListener('click', e => {
-  const t = e.target.closest('[data-act]');
-  if (!t) return;
-  const act = t.dataset.act;
-
-  switch(act){
-    case 'authtab': state.authTab = t.dataset.tab; state.authError = null; render(); break;
-    case 'demo-enter':
-      state.user = { name:'Demo User', email:'demo@nuroli.app' };
-      state.route = 'chat'; state.activeConvId = null; persist(); render();
-      toast('Signed in to the demo workspace.','ok'); break;
-    case 'go': go(t.dataset.route); break;
-    case 'new-conv':
-      closeOverlay(); state.activeConvId = null; go('chat'); break;
-    case 'open-conv':
-      closeOverlay(); state.activeConvId = t.dataset.id; state.pinStream = true; go('chat'); break;
-    case 'conv-sheet': openConvSheet(); break;
-    case 'starter':
-      state.composerDrafts[activeConv() ? activeConv().id : 'new'] = t.dataset.q;
-      render();
-      { const c = $('#composer'); if (c){ c.focus(); c.setSelectionRange(c.value.length, c.value.length); grow(c); } }
-      break;
-    case 'model': break;
-    case 'stop': stopStreaming(t.dataset.id); break;
-    case 'retry': retryMessage(t.dataset.id); break;
-    case 'src': e.preventDefault(); openSources(t.dataset.src); break;
-    case 'close-overlay': closeOverlay(); break;
-
-    case 'summarise': startSummary(); break;
-    case 'reviewtab': state.reviewTab = t.dataset.tab; render(); break;
-    case 'cancel-draft':
-      if (state.generating){ clearTimers(); state.generating = false; }
-      go('chat');
-      if (state.draft) toast('Draft kept. Reopen it from Resume draft.');
-      break;
-    case 'discard-draft':
-      confirmDialog('Discard this draft?','The summary and your edits will be thrown away. The conversation itself is not affected.','Discard draft','discard-confirm');
-      break;
-    case 'discard-confirm':
-      state.draft = null; closeOverlay(); persist(); go('chat'); toast('Draft discarded.'); break;
-    case 'confirm-save': confirmSave(); break;
-
-    case 'libsearch': break;
-    case 'clear-search': state.librarySearch = ''; render(); break;
-    case 'open-summary':
-      state.activeSummaryId = t.dataset.id; state.askReturn = null; go('detail'); break;
-    case 'open-cite':
-      state.activeSummaryId = t.dataset.id; state.askReturn = true;
-      state.route = 'detail'; render();
-      { const m = $('#main'); if (m) m.focus({preventScroll:true}); }
-      break;
-    case 'back-from-detail':
-      if (state.askReturn){ state.askReturn = null; go('ask'); }
-      else go('library');
-      break;
-    case 'reopen-conv':
-      state.activeConvId = t.dataset.id; state.pinStream = true; go('chat');
-      toast('Full conversation reopened.'); break;
-    case 'ask-about':
-      { const s = summaryById(t.dataset.id);
-        state.askInput = 'What do I know about ' + (s ? s.topic.toLowerCase() : '') + '?';
-        go('ask');
-        const a = $('#askq'); if (a){ a.focus(); a.setSelectionRange(a.value.length,a.value.length); } }
-      break;
-    case 'ask-sample':
-      state.askInput = t.dataset.q; render(); askKnowledge(t.dataset.q); break;
-    case 'websearch': runWebSearch(); break;
-    case 'ask-in-chat':
-      { const q = state.askResult.question;
-        state.activeConvId = null; go('chat');
-        state.composerDrafts['new'] = q; render();
-        const c = $('#composer'); if (c){ c.focus(); grow(c); }
-        toast('Moved to a conversation. Send when ready.'); }
-      break;
-
-    case 'signout':
-      state.user = null; state.route = 'entry'; clearTimers(); persist(); render(); break;
-    case 'demo-panel': openDemoPanel(); break;
-    case 'demo-reset':
-      clearTimers(); Store.clear();
-      state = freshState(true);
-      state.user = { name:'Demo User', email:'demo@nuroli.app' };
-      state.route = 'chat'; closeOverlay(); persist(); render();
-      toast('Demo reset to its seeded state.','ok'); break;
-    case 'demo-empty':
-      clearTimers(); Store.clear();
-      state = freshState(false);
-      state.user = { name:'New User', email:'new@nuroli.app' };
-      state.route = 'chat'; closeOverlay(); persist(); render();
-      toast('Empty account loaded.','ok'); break;
-    case 'demo-fail':
-      state.failNext = !state.failNext; openDemoPanel();
-      toast(state.failNext ? 'Next reply will fail once.' : 'Error simulation off.'); break;
-    case 'demo-noop': break;
-  }
-});
-
-/* forms */
-document.addEventListener('submit', e => {
-  const f = e.target.closest('[data-act]');
-  if (!f) return;
-  e.preventDefault();
-  if (f.dataset.act === 'send-form'){
-    const ta = $('#composer'); if (!ta) return;
-    sendMessage(ta.value);
-  }
-  if (f.dataset.act === 'ask-form'){
-    if (state.askInput.trim()) askKnowledge(state.askInput);
-  }
-});
-/* auth submit lives inside a form; handle via click for clarity */
-document.addEventListener('submit', e => {
-  if (!e.target.matches('#authform')) return;
-  e.preventDefault();
-  const f = state.entryFields;
-  const failWith = (fieldName, message, inputId) => {
-    state.authError = { field: fieldName, message };
-    render();
-    const el = $('#'+inputId); if (el) el.focus();   // move focus to the problem
-  };
-  if (state.authTab === 'register' && !f.name.trim()){
-    return failWith('name', 'Add a name so your account has one.', 'auth-name'); }
-  if (!f.email.includes('@')){
-    return failWith('email', 'Enter an email address so the demo can label your account.', 'auth-email'); }
-  if (f.password.length < 8){
-    return failWith('password', 'Use at least 8 characters. This is simulated — never enter a real password.', 'auth-pass'); }
-  state.authError = null;
-  state.user = { name: (f.name.trim() || f.email.split('@')[0]), email: f.email };
-  if (state.authTab === 'register'){ state.conversations = []; state.summaries = []; }
-  state.route = 'chat'; state.activeConvId = null; persist(); render();
-  toast(state.authTab==='signin' ? 'Signed in.' : 'Account created. Nothing saved yet.','ok');
-});
-
-/* inputs */
-document.addEventListener('input', e => {
-  const el = e.target;
-  const act = el.dataset.act;
-  if (el.id === 'composer'){
-    const conv = activeConv();
-    state.composerDrafts[conv ? conv.id : 'new'] = el.value;
-    grow(el);
-    const btn = $('.sendbtn'); if (btn) btn.disabled = !el.value.trim();
-    return;
-  }
-  if (el.id === 'askq'){ state.askInput = el.value; grow(el);
-    const b = $('[data-act="ask-form"] button[type="submit"]'); if (b) b.disabled = !el.value.trim(); return; }
-  if (act === 'libsearch'){ state.librarySearch = el.value; render(); return; }
-  if (act === 'draft-title'){ if (state.draft){ state.draft.title = el.value; state.draft.dirty = true; } return; }
-  if (act === 'draft-body'){ if (state.draft){ state.draft.body = el.value; state.draft.dirty = true; } return; }
-  if (act === 'authinput'){ state.entryFields[el.name] = el.value; return; }
-});
-document.addEventListener('change', e => {
-  if (e.target.dataset.act === 'model'){
-    state.nextModel = e.target.value;
-    persist();
-    toast('Next reply will use ' + MODELS[state.nextModel].name + '. Earlier messages are unchanged.');
-  }
-});
-
-/* keyboard */
-document.addEventListener('keydown', e => {
-  const overlay = $('#overlay [data-panel]');
-  if (overlay){
-    if (e.key === 'Escape'){ e.preventDefault(); closeOverlay(); return; }
-    if (e.key === 'Tab'){ trapFocus(overlay, e); }
-    return;
-  }
-  if (e.key === 'Enter' && !e.shiftKey && e.target.id === 'composer'){
-    e.preventDefault(); sendMessage(e.target.value);
-  }
-  if (e.key === 'Enter' && !e.shiftKey && e.target.id === 'askq'){
-    e.preventDefault(); if (state.askInput.trim()) askKnowledge(state.askInput);
-  }
-});
-
-/* keep layout-dependent chrome correct when the viewport crosses the breakpoint */
-let wasMobile = isMobile();
-window.addEventListener('resize', () => {
-  if (isMobile() !== wasMobile){ wasMobile = isMobile(); render(); }
-});
-
-/* ---------------------------------------------------------------- 9. BOOT */
-state = hydrate();
-render();
-</script>
+<p style="margin-top:var(--s9);color:var(--ink-50);font-size:var(--t-sm)">End of specification. Implementation tickets reference sections of this file by number.</p>
+</main>
 </body>
 </html>
