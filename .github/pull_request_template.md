@@ -45,6 +45,6 @@ exit 0
 ## Preflight
 
 ```text
-(contents of graphify-out/preflight.md from the branch head: baseline status,
-impact summary, conflict summary; required from NU-050 onward)
+(run `make preflight` on the branch head and paste graphify-out/preflight.md:
+baseline status, changed and affected nodes, communities, god nodes, conflicts)
 ```

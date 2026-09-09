@@ -81,8 +81,11 @@ prints the commands it runs and honours the worktree file `.worktree.env`.
 12. **Planning documents are read-only** except your ticket's Status line,
     changed on your branch with `docs: NU-0nn status <value>`.
 13. **Keep the code graph current (R-41).** The post-commit hook refreshes it;
-    run `make preflight` before opening or updating a pull request and paste
-    its report into the evidence.
+    run `make preflight` before opening or updating a pull request and after
+    every rebase, and paste `graphify-out/preflight.md` into the evidence.
+    Exit 1 means the graph is unhealthy; exit 2 means rebase first (branch
+    behind `rebuild/v1`, baseline moved, or two Alembic heads). Parallel lanes
+    open only after `make graph-overlap A=<paths> B=<paths>` says parallel.
 
 ## Code graph (R-41)
 
