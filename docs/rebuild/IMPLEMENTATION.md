@@ -877,7 +877,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** `Settings` field names for every later ticket.
 - **Reason:** configuration is the secret boundary; it must be strict before credentials exist anywhere.
 - **Practices:** OWASP ASVS (configuration and logging items).
-- **Status:** not started
+- **Status:** in progress
 
 #### NU-010 Compose stacks, Dockerfiles, nginx, fake-model placeholder, `make dev`
 - **Phase:** 3 · **Context:** platform / infra
