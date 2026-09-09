@@ -681,7 +681,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** exact dependency versions locked, for NU-006 and later.
 - **Reason:** tooling before code so every later ticket has the same gate.
 - **Practices:** import-boundary lint (configured in NU-006).
-- **Status:** in progress
+- **Status:** in review
 
 #### NU-003 Frontend toolchain: Vite, React 19, TypeScript, ESLint, Prettier, Vitest
 - **Phase:** 1 · **Context:** platform
