@@ -789,7 +789,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** package map for all later backend tickets; feature tickets add routes only inside their module's `api/router.py`.
 - **Reason:** boundaries enforced by a tool from the first line keep DDD-lite honest with weak models, and a fixed router registration removes `main.py` as a conflict point.
 - **Practices:** import-boundary lint; FastAPI structure rules.
-- **Status:** not started
+- **Status:** in progress
 
 #### NU-007 Shared kernel: ids, Source value object, sanitizer, domain errors
 - **Phase:** 2 · **Context:** shared kernel
