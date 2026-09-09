@@ -898,7 +898,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** service names and internal URLs for NU-011 and NU-022.
 - **Reason:** the deployment shape must exist early so every later slice is tested in it.
 - **Practices:** reliability checks (section 5.7).
-- **Status:** not started
+- **Status:** in progress
 
 ### Phase 4 — Database connection and migration foundation
 
