@@ -1,0 +1,32 @@
+# Local configuration and secrets (never committed)
+.env
+.env.*
+!.env.example
+.worktree.env
+*.pem
+*.key
+*.crt
+
+# Database dumps and backups
+*.dump
+backups/
+
+# Logs
+*.log
+
+# Dependencies and build output
+node_modules/
+.venv/
+dist/
+
+# Tool caches and test reports
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+playwright-report/
+test-results/
+
+# Agent working files and the per-worktree code graph (R-41)
+.opencode/*.local.*
+.agent-scratch/
+graphify-out/
