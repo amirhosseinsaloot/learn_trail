@@ -34,5 +34,7 @@ typecheck-frontend: ## tsc --noEmit in frontend/
 test-fe: ## Vitest
 	@$(require_frontend_toolchain)
 	cd $(FRONTEND_DIR) && pnpm exec vitest run
-e2e: ## Playwright against the Compose test stack with the fake model
-	@echo "make $@: not implemented until NU-008" >&2; exit 1
+e2e: ## Playwright with axe; Vite dev server only until NU-022 adds the Compose test stack
+	@$(require_frontend_toolchain)
+	cd $(FRONTEND_DIR) && pnpm exec playwright install chromium
+	cd $(FRONTEND_DIR) && pnpm exec playwright test

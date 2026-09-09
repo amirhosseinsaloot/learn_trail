@@ -1,0 +1,199 @@
+/* Reusable components (DESIGN.html section 3). Classes match the specification. */
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  padding: 9px var(--s4);
+  border-radius: var(--r-md);
+  border: var(--bw) solid transparent;
+  font-size: var(--t-base);
+  font-weight: 520;
+  white-space: nowrap;
+  cursor: pointer;
+  background: none;
+  color: inherit;
+}
+
+.btn--primary {
+  background: var(--trail);
+  color: #fff;
+  box-shadow: var(--e1);
+}
+
+.btn--secondary {
+  background: var(--surface);
+  border-color: var(--line-strong);
+}
+
+.btn--ghost {
+  color: var(--ink-70);
+}
+
+.btn--danger {
+  background: var(--surface);
+  color: var(--danger);
+  border-color: #e4c6c1;
+}
+
+.btn--sm {
+  padding: 6px var(--s3);
+  font-size: var(--t-sm);
+  border-radius: var(--r-sm);
+}
+
+.btn--lg {
+  padding: 12px var(--s5);
+  font-size: var(--t-md);
+}
+
+.btn--block {
+  width: 100%;
+}
+
+.btn[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn[aria-busy='true'] .btn__label {
+  visibility: hidden;
+}
+
+.btn__spinner {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  animation: btn-spin 900ms linear infinite;
+}
+
+@keyframes btn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.field {
+  display: block;
+  margin-bottom: var(--s4);
+}
+
+.field__label {
+  display: block;
+  font-size: var(--t-sm);
+  font-weight: 560;
+  color: var(--ink-70);
+  margin-bottom: 6px;
+}
+
+.field__hint {
+  font-size: var(--t-xs);
+  color: var(--ink-50);
+  margin: 5px 0 0;
+}
+
+.field__error {
+  font-size: var(--t-xs);
+  color: var(--danger);
+  margin: 5px 0 0;
+}
+
+.input,
+.textarea {
+  width: 100%;
+  background: var(--surface);
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-md);
+  padding: 10px var(--s3);
+  color: var(--ink);
+}
+
+.input--invalid {
+  border-color: var(--danger);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px;
+  border-radius: var(--r-pill);
+  font-size: var(--t-xs);
+  font-weight: 560;
+  border: var(--bw) solid transparent;
+}
+
+.pill--draft {
+  background: var(--blaze-soft);
+  color: var(--blaze);
+}
+
+.pill--saved {
+  background: var(--trail-soft);
+  color: var(--trail-deep);
+}
+
+.pill--web {
+  background: var(--web-soft);
+  color: var(--web);
+}
+
+.pill--muted {
+  background: var(--surface-sunk);
+  color: var(--ink-50);
+}
+
+.pill--danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.card {
+  background: var(--surface);
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--s4);
+}
+
+.alert {
+  border-radius: var(--r-md);
+  padding: var(--s3) var(--s4);
+  font-size: var(--t-sm);
+  border: var(--bw) solid;
+}
+
+.alert--error {
+  background: var(--danger-soft);
+  border-color: #e4c6c1;
+  color: var(--danger);
+}
+
+.alert--info {
+  background: var(--web-soft);
+  border-color: #c9d5e6;
+  color: var(--web);
+}
+
+.alert--success {
+  background: var(--trail-soft);
+  border-color: #bfd9cc;
+  color: var(--trail-deep);
+}
+
+.empty {
+  text-align: center;
+  padding: var(--s8) var(--s5);
+  color: var(--ink-50);
+}
+
+.empty__title {
+  font-family: var(--font-ui);
+  font-size: var(--t-md);
+  color: var(--ink);
+  margin: 0 0 var(--s2);
+}
+
+.empty__action {
+  margin-top: var(--s4);
+}

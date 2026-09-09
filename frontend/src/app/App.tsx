@@ -1,9 +1,19 @@
-// Placeholder until NU-008 adds the router, providers, and layout.
+import '../styles/tokens.css';
+import '../styles/base.css';
+import '../styles/components.css';
+import '../styles/shell.css';
+
+import { RouterProvider } from 'react-router';
+
+import { Providers } from './providers';
+import { createAppRouter } from './router';
+
+const router = createAppRouter();
+
 export function App() {
   return (
-    <main>
-      <h1>Nuroli</h1>
-      <p>The application shell is built in NU-008.</p>
-    </main>
+    <Providers>
+      <RouterProvider router={router} />
+    </Providers>
   );
 }

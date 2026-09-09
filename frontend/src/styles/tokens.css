@@ -1,0 +1,72 @@
+/* Production design tokens, copied verbatim from docs/rebuild/DESIGN.html
+   section 3. Change them there first; light theme only in v1. */
+:root {
+  --paper: #f1f2ee;
+  --surface: #ffffff;
+  --surface-2: #f8f9f6;
+  --surface-sunk: #eaece6;
+  --ink: #17201c;
+  --ink-70: #414b45;
+  --ink-50: #626b65;
+  --ink-30: #77807a;
+  --line: #dee1da;
+  --line-strong: #c4cabf;
+  --trail: #1f6b54;
+  --trail-deep: #16513f;
+  --trail-soft: #e3efe9; /* confirmed knowledge, primary action */
+  --blaze: #9a5b18;
+  --blaze-soft: #f7ebdb; /* draft, unconfirmed */
+  --web: #3a5a85;
+  --web-soft: #e5ebf3; /* web evidence only */
+  --danger: #96382f;
+  --danger-soft: #f8e7e4;
+  --font-ui:
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  --font-read:
+    'Iowan Old Style', 'Palatino Linotype', Palatino, Charter, Georgia, 'Times New Roman', serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --t-xs: 11.5px;
+  --t-sm: 13px;
+  --t-base: 14.5px;
+  --t-md: 16px;
+  --t-lg: 19px;
+  --t-xl: 24px;
+  --t-2xl: 31px;
+  --t-3xl: 42px;
+  --lh-tight: 1.22;
+  --lh-ui: 1.45;
+  --lh-read: 1.62;
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+  --s7: 32px;
+  --s8: 40px;
+  --s9: 56px;
+  --s10: 80px;
+  --r-sm: 5px;
+  --r-md: 9px;
+  --r-lg: 14px;
+  --r-pill: 999px;
+  --bw: 1px;
+  --e1: 0 1px 2px rgba(23, 32, 28, 0.06);
+  --e2: 0 2px 6px rgba(23, 32, 28, 0.07), 0 1px 2px rgba(23, 32, 28, 0.05);
+  --e3: 0 14px 34px rgba(23, 32, 28, 0.14), 0 3px 10px rgba(23, 32, 28, 0.07);
+  --focus: 0 0 0 2px var(--surface), 0 0 0 4px var(--trail);
+  --rail-w: 216px;
+  --list-w: 292px;
+  --read-w: 68ch;
+  --dur: 160ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur: 0ms;
+  }
+  * {
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+  }
+}
