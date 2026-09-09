@@ -28,6 +28,7 @@ fmt-check-backend: ## Ruff format --check in backend/
 lint-backend: ## Ruff check and import-linter in backend/
 	@$(require_backend_toolchain)
 	cd $(BACKEND_DIR) && uv run ruff check .
+	cd $(BACKEND_DIR) && uv run lint-imports
 typecheck-backend: ## Pyright in backend/
 	@$(require_backend_toolchain)
 	cd $(BACKEND_DIR) && uv run pyright

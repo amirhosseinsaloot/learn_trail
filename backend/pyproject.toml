@@ -76,3 +76,70 @@ markers = [
   "contract: adapter against recorded provider fixtures",
   "security: part of the security matrix (IMPLEMENTATION.md section 5.3)",
 ]
+
+# Layer and module boundaries (IMPLEMENTATION.md section 2.3), enforced by
+# `make lint` and by tests/unit/test_boundaries.py.
+[tool.importlinter]
+root_package = "nuroli"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "domain imports only the standard library, shared_kernel, and its own domain"
+type = "forbidden"
+source_modules = ["nuroli.*.domain"]
+forbidden_modules = [
+  "nuroli.*.application", "nuroli.*.infrastructure", "nuroli.*.api",
+  "nuroli.platform", "nuroli.adapters", "nuroli.ports", "nuroli.main",
+  "fastapi", "starlette", "sqlalchemy", "pydantic", "pydantic_settings", "httpx",
+  "alembic", "asyncpg", "authlib", "argon2",
+]
+
+[[tool.importlinter.contracts]]
+name = "application never imports infrastructure, api, platform, or frameworks"
+type = "forbidden"
+source_modules = ["nuroli.*.application"]
+forbidden_modules = [
+  "nuroli.*.infrastructure", "nuroli.*.api", "nuroli.platform", "nuroli.adapters", "nuroli.main",
+  "fastapi", "starlette", "sqlalchemy", "pydantic", "pydantic_settings", "httpx",
+  "alembic", "asyncpg", "authlib", "argon2",
+]
+
+[[tool.importlinter.contracts]]
+name = "infrastructure never imports api or the web framework"
+type = "forbidden"
+source_modules = ["nuroli.*.infrastructure"]
+forbidden_modules = ["nuroli.*.api", "nuroli.main", "fastapi", "starlette"]
+
+[[tool.importlinter.contracts]]
+name = "api never imports infrastructure directly"
+type = "forbidden"
+source_modules = ["nuroli.*.api"]
+forbidden_modules = ["nuroli.*.infrastructure", "nuroli.adapters", "sqlalchemy", "alembic", "asyncpg"]
+
+[[tool.importlinter.contracts]]
+name = "shared_kernel depends on nothing in the application or on frameworks"
+type = "forbidden"
+source_modules = ["nuroli.shared_kernel"]
+forbidden_modules = [
+  "nuroli.identity", "nuroli.conversations", "nuroli.knowledge",
+  "nuroli.platform", "nuroli.adapters", "nuroli.ports", "nuroli.main",
+  "fastapi", "starlette", "sqlalchemy", "pydantic", "pydantic_settings", "httpx",
+]
+
+[[tool.importlinter.contracts]]
+name = "identity internals are private to identity"
+type = "forbidden"
+source_modules = ["nuroli.conversations", "nuroli.knowledge"]
+forbidden_modules = ["nuroli.identity.domain", "nuroli.identity.infrastructure", "nuroli.identity.api"]
+
+[[tool.importlinter.contracts]]
+name = "conversations internals are private to conversations"
+type = "forbidden"
+source_modules = ["nuroli.identity", "nuroli.knowledge"]
+forbidden_modules = ["nuroli.conversations.domain", "nuroli.conversations.infrastructure", "nuroli.conversations.api"]
+
+[[tool.importlinter.contracts]]
+name = "knowledge internals are private to knowledge"
+type = "forbidden"
+source_modules = ["nuroli.identity", "nuroli.conversations"]
+forbidden_modules = ["nuroli.knowledge.domain", "nuroli.knowledge.infrastructure", "nuroli.knowledge.api"]
