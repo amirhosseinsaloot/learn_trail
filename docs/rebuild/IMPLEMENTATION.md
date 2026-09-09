@@ -832,7 +832,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** component API of primitives for feature tickets.
 - **Reason:** shared shell and primitives prevent each feature ticket from inventing its own layout.
 - **Practices:** WCAG 2.2 AA with axe.
-- **Status:** not started
+- **Status:** in progress
 
 #### NU-050 Graphify: impact, conflict, overlap reports, preflight, CI graph job
 - **Phase:** 2 · **Context:** platform (agents area)
