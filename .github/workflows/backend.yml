@@ -1,0 +1,49 @@
+# Backend pull-request gate (IMPLEMENTATION.md section 5.2). Later tickets add
+# the `migrations` and `security` jobs and the PostgreSQL service.
+name: backend
+
+on:
+  pull_request:
+  push:
+    branches: [rebuild/v1]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_LOCKED: "1"
+
+jobs:
+  backend-quality:
+    name: backend-quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Install backend dependencies
+        run: uv sync --locked --all-groups
+        working-directory: backend
+      - name: Format, lint, typecheck
+        run: make fmt-check-backend lint-backend typecheck-backend
+
+  backend-tests:
+    name: backend-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Install backend dependencies
+        run: uv sync --locked --all-groups
+        working-directory: backend
+      - name: Unit tests
+        run: make test-unit

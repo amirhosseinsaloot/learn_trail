@@ -1,0 +1,46 @@
+# Pre-commit hooks (docs/rebuild/IMPLEMENTATION.md section 5.1). `make setup`
+# installs them for the pre-commit, commit-msg, and post-commit stages. Ruff,
+# Prettier, and ESLint run the versions locked in backend/uv.lock and
+# frontend/pnpm-lock.yaml, so hooks, `make check`, and CI agree.
+minimum_pre_commit_version: "4.0.0"
+default_install_hook_types: [pre-commit, commit-msg, post-commit]
+default_stages: [pre-commit]
+
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-format
+        name: ruff format (backend)
+        language: system
+        entry: uv run --project backend ruff format
+        files: ^backend/.*\.py$
+      - id: ruff-check
+        name: ruff check (backend)
+        language: system
+        entry: uv run --project backend ruff check
+        files: ^backend/.*\.py$
+      - id: prettier
+        name: prettier (frontend)
+        language: system
+        entry: bash -c 'cd frontend && pnpm exec prettier --write "${@#frontend/}"' --
+        files: ^frontend/.*\.(ts|tsx|js|json|css|html|md)$
+      - id: eslint
+        name: eslint (frontend)
+        language: system
+        entry: bash -c 'cd frontend && pnpm exec eslint "${@#frontend/}"' --
+        files: ^frontend/.*\.(ts|tsx)$
+      - id: forbid-dotenv
+        name: forbid staging .env files
+        language: fail
+        entry: ".env files are git-ignored and must never be staged (IMPLEMENTATION.md section 2.7):"
+        files: ^(.*/)?\.env(\..+)?$
+        exclude: ^(.*/)?\.env\.example$
+      - id: forbid-trailers
+        name: reject Co-Authored-By and Signed-off-by trailers (R-40)
+        language: system
+        stages: [commit-msg]
+        entry: bash -c 'if grep -Eiq "^(Co-Authored-By|Signed-off-by):" "$1"; then echo "commit message carries a Co-Authored-By or Signed-off-by trailer; every commit is owner-only (R-40)" >&2; exit 1; fi' --
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks

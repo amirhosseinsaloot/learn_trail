@@ -1,0 +1,59 @@
+# Traceability and identity gate (IMPLEMENTATION.md section 5.2, R-40):
+# branch name, commit subjects, author and committer identity, no trailers.
+name: conventions
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  OWNER_NAME: Amir
+  OWNER_EMAIL: amirhosseinsaloot@gmail.com
+  BRANCH_REGEX: '^ticket/NU-[0-9]{3}-[a-z0-9-]+$'
+  SUBJECT_REGEX: '^(feat|fix|chore|docs|test|refactor)(\([a-z-]+\))?: NU-[0-9]{3} .+'
+
+jobs:
+  conventions:
+    name: conventions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Check branch name, commit subjects, identity, and trailers
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          status=0
+          if [[ ! "$HEAD_REF" =~ $BRANCH_REGEX ]]; then
+            echo "::error::branch '$HEAD_REF' does not match $BRANCH_REGEX"
+            status=1
+          fi
+          for sha in $(git rev-list --reverse "$BASE_SHA".."$HEAD_SHA"); do
+            subject=$(git log -1 --format=%s "$sha")
+            author="$(git log -1 --format=%an "$sha") <$(git log -1 --format=%ae "$sha")>"
+            committer="$(git log -1 --format=%cn "$sha") <$(git log -1 --format=%ce "$sha")>"
+            owner="$OWNER_NAME <$OWNER_EMAIL>"
+            if [[ ! "$subject" =~ $SUBJECT_REGEX ]]; then
+              echo "::error::$sha subject '$subject' does not match $SUBJECT_REGEX"
+              status=1
+            fi
+            if [[ "$author" != "$owner" ]]; then
+              echo "::error::$sha author '$author' is not the owner '$owner' (R-40)"
+              status=1
+            fi
+            if [[ "$committer" != "$owner" ]]; then
+              echo "::error::$sha committer '$committer' is not the owner '$owner' (R-40)"
+              status=1
+            fi
+            if git log -1 --format=%B "$sha" | grep -Eiq '^(Co-Authored-By|Signed-off-by):'; then
+              echo "::error::$sha carries a Co-Authored-By or Signed-off-by trailer (R-40)"
+              status=1
+            fi
+          done
+          exit "$status"
