@@ -19,13 +19,27 @@ setup: ## uv sync, pnpm install --frozen-lockfile, pre-commit install
 	cd $(FRONTEND_DIR) && pnpm install --frozen-lockfile
 	$(PRE_COMMIT) install --install-hooks
 
+COMPOSE := docker compose
+COMPOSE_DEV := $(COMPOSE) -f compose.yaml -f compose.dev.yaml
+
+define require_env_file
+test -f .env || { echo "make $@: .env is missing; copy .env.example to .env and fill in the placeholders" >&2; exit 1; }
+endef
+
 .PHONY: dev up down
 dev: ## Compose dev stack: db, api with reload, Vite dev server, fake model
-	@echo "make $@: not implemented until NU-010" >&2; exit 1
-up: ## Release stack from compose.yaml
-	@echo "make $@: not implemented until NU-010" >&2; exit 1
-down: ## Stop the release stack
-	@echo "make $@: not implemented until NU-010" >&2; exit 1
+	@$(require_docker)
+	@$(require_env_file)
+	@echo "make dev: project $${COMPOSE_PROJECT_NAME:-nuroli}: web http://localhost:$${NUROLI_DEV_VITE_PORT:-5173}, api http://localhost:$${NUROLI_DEV_API_PORT:-8000}, db localhost:$${NUROLI_DEV_DB_PORT:-5432}, fake model http://localhost:$${NUROLI_DEV_FAKE_MODEL_PORT:-9000}"
+	$(COMPOSE_DEV) up --build
+up: ## Release stack from compose.yaml, built locally
+	@$(require_docker)
+	@$(require_env_file)
+	$(COMPOSE) -f compose.yaml up --build --detach --wait
+	@echo "make up: project $${COMPOSE_PROJECT_NAME:-nuroli}: web http://localhost:$${NUROLI_WEB_PORT:-8080}"
+down: ## Stop the stack started by make up or make dev (volumes are kept)
+	@$(require_docker)
+	$(COMPOSE_DEV) down --remove-orphans
 
 .PHONY: audit deps-update
 audit: ## pip-audit, pnpm audit --audit-level=high, gitleaks detect

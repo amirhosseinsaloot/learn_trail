@@ -1,0 +1,68 @@
+# Development overrides for compose.yaml: bind mounts and reload for the API,
+# PostgreSQL and the API published on this worktree's ports, a Vite dev server,
+# and the fake model placeholder (NU-022 replaces it with the real fake server).
+# Use through `make dev`, which loads .worktree.env for the ports.
+services:
+  web:
+    # The Vite dev server runs on the host network so its /api proxy reaches the
+    # API on localhost:${NUROLI_DEV_API_PORT}, exactly like `pnpm dev` on the host.
+    image: node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553
+    build: !reset null
+    command:
+      - sh
+      - -c
+      - "npm install -g pnpm@11.9.0 >/dev/null && pnpm install --frozen-lockfile --store-dir /pnpm/store && exec pnpm exec vite --host 0.0.0.0 --strictPort"
+    working_dir: /app/frontend
+    network_mode: host
+    ports: !reset []
+    depends_on: !reset {}
+    healthcheck: !reset null
+    environment:
+      NUROLI_DEV_VITE_PORT: ${NUROLI_DEV_VITE_PORT:-5173}
+      NUROLI_DEV_API_PORT: ${NUROLI_DEV_API_PORT:-8000}
+    volumes:
+      - ./frontend:/app/frontend
+      # The container keeps its own node_modules and store in named volumes so
+      # nothing is written into the bind-mounted frontend/ directory.
+      - web_node_modules:/app/frontend/node_modules
+      - web_pnpm_store:/pnpm/store
+    restart: "no"
+
+  api:
+    command:
+      - python
+      - -m
+      - uvicorn
+      - nuroli.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --reload
+      - --reload-dir
+      - /app/src
+    ports:
+      - "${NUROLI_DEV_API_PORT:-8000}:8000"
+    volumes:
+      - ./backend/src:/app/src:ro
+    restart: "no"
+
+  db:
+    ports:
+      - "${NUROLI_DEV_DB_PORT:-5432}:5432"
+    restart: "no"
+
+  fake-model:
+    # Placeholder that answers on the fake model's service name and port until
+    # NU-022 ships the OpenAI-compatible fake server in infra/fake-model/.
+    image: python:3.14-slim-bookworm@sha256:9ab8d9c8514b44f90cf0029dd42fdd7e9e211e639c8b995304cc04568dee900f
+    command: ["python", "-m", "http.server", "9000", "--bind", "0.0.0.0", "--directory", "/srv"]
+    volumes:
+      - ./infra/fake-model:/srv:ro
+    ports:
+      - "${NUROLI_DEV_FAKE_MODEL_PORT:-9000}:9000"
+    restart: "no"
+
+volumes:
+  web_node_modules:
+  web_pnpm_store:

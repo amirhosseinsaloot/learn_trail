@@ -1,0 +1,68 @@
+# Release topology (ARCHITECTURE.md section 15, R-19): web serves the React
+# build and proxies /api, /health, /ready to api; api runs one uvicorn worker;
+# db is PostgreSQL 18 on a named volume. Only web publishes a port. Ports and
+# the project name come from the environment so worktrees run side by side
+# (IMPLEMENTATION.md section 4.3); `make up` builds the images locally.
+services:
+  web:
+    image: ghcr.io/amirhosseinsaloot/nuroli-web:${NUROLI_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+    ports:
+      - "${NUROLI_WEB_PORT:-8080}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8080/index.html"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+    restart: unless-stopped
+
+  api:
+    image: ghcr.io/amirhosseinsaloot/nuroli-api:${NUROLI_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    env_file: .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    restart: unless-stopped
+
+  db:
+    image: postgres:18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
+    environment:
+      POSTGRES_USER: nuroli
+      POSTGRES_DB: nuroli
+      # Only the password reaches this container; the rest of .env stays with api.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nuroli -d nuroli"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  # Compose prefixes the name with the project: nuroli_pgdata in the main
+  # checkout, nuroli-nu0nn_pgdata in a ticket worktree.
+  pgdata:

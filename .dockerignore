@@ -1,0 +1,20 @@
+# Build-context allowlist for infra/docker/*.Dockerfile (context: repository
+# root). Everything is excluded unless listed, so .env, node_modules, .venv,
+# git metadata, and the code graph never reach an image (section 2.7).
+*
+!backend/pyproject.toml
+!backend/uv.lock
+!backend/alembic.ini
+!backend/src/
+!backend/migrations/
+!frontend/package.json
+!frontend/pnpm-lock.yaml
+!frontend/index.html
+!frontend/tsconfig.json
+!frontend/vite.config.ts
+!frontend/src/
+!frontend/public/
+!infra/
+**/__pycache__/
+**/.venv/
+**/node_modules/
