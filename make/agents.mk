@@ -56,6 +56,7 @@ worktree: ## Create ../nuroli-NU-0nn on branch ticket/NU-0nn-<slug>: make worktr
 	  "BASE_SCHEMA_HEAD=$$schema_head" \
 	  > "$(WORKTREE_DIR)/.worktree.env"; \
 	echo "wrote $(WORKTREE_DIR)/.worktree.env:"; cat "$(WORKTREE_DIR)/.worktree.env"
+	$(MAKE) -C "$(WORKTREE_DIR)" graph-build || { echo "make $@: the worktree exists but its code graph could not be built; run make setup then make graph-build inside it" >&2; exit 1; }
 	@echo "make $@: worktree ready at $(WORKTREE_DIR) on $(TICKET_BRANCH); next: cd $(WORKTREE_DIR) && make setup"
 
 worktree-clean: ## Remove a ticket worktree and its Compose project: make worktree-clean T=NU-0nn

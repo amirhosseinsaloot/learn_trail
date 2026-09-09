@@ -40,6 +40,16 @@ repos:
         language: system
         stages: [commit-msg]
         entry: bash -c 'if grep -Eiq "^(Co-Authored-By|Signed-off-by):" "$1"; then echo "commit message carries a Co-Authored-By or Signed-off-by trailer; every commit is owner-only (R-40)" >&2; exit 1; fi' --
+      - id: graph-update
+        name: refresh the code graph (R-41)
+        language: system
+        stages: [post-commit]
+        always_run: true
+        pass_filenames: false
+        verbose: true
+        entry: >-
+          bash -c 'make graph-update || { echo "post-commit: graph update failed; the next make preflight rebuilds it" >&2;
+          mkdir -p graphify-out && touch graphify-out/.needs_rebuild; }; exit 0'
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1
     hooks:

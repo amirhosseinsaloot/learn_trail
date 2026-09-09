@@ -1,0 +1,7 @@
+# Graph scope (R-41): code only. Everything except backend/, frontend/, and
+# infra/ is excluded; git-ignored paths such as node_modules and .venv are
+# excluded by graphify's own .gitignore handling.
+/*
+!/backend/
+!/frontend/
+!/infra/

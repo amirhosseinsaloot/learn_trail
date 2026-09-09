@@ -84,6 +84,19 @@ prints the commands it runs and honours the worktree file `.worktree.env`.
     run `make preflight` before opening or updating a pull request and paste
     its report into the evidence.
 
+## Code graph (R-41)
+
+Graphify keeps an AST-only code graph of this worktree in `graphify-out/`
+(git-ignored, no model call). The post-commit hook runs `make graph-update`
+after every commit; `make graph-build` rebuilds from scratch (`FORCE=1` after
+deleting code). Ask it before reading widely: `graphify query "<question>"`,
+`graphify explain "<node>"`, `graphify path "A" "B"`, `graphify god-nodes`.
+Lanes are opened only for low community overlap (`make graph-overlap`); shared
+files keep one writer at a time and the graph never arbitrates; run
+`make preflight` before opening or updating a pull request and again after a
+rebase; its impact and conflict reports go into the evidence, while tests and
+migrations alone gate a merge.
+
 ## Sessions
 
 OpenCode project agents live in `.opencode/agents/`: `implementer` (edit and
