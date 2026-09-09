@@ -854,7 +854,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** from this ticket on, every pull request carries a Preflight section and every lane pair requires `make graph-overlap` (section 4.9).
 - **Reason:** turns the four Graphify rules in section 3.5 into commands with exit codes, so the coordinator, implementer, and reviewer act on the same report instead of on impressions.
 - **Practices:** Graphify code graph; test-first (scripts have logic).
-- **Status:** not started
+- **Status:** in progress
 
 ### Phase 3 — Configuration and secret boundaries
 
