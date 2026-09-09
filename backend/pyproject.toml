@@ -1,0 +1,79 @@
+[project]
+name = "nuroli"
+version = "0.1.0"
+description = "Nuroli API: a self-hosted learning companion (backend)"
+readme = "../README.md"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "alembic>=1.19.2,<2",
+    "argon2-cffi>=25.1.0,<26",
+    "asyncpg>=0.31.0,<1",
+    "authlib>=1.8.0,<2",
+    "fastapi>=0.141.1,<1",
+    "httpx>=0.28.1,<1",
+    "pydantic-settings>=2.15.0,<3",
+    "sqlalchemy[asyncio]>=2.0.52,<3",
+    "uvicorn[standard]>=0.52.4,<1",
+]
+
+[dependency-groups]
+dev = [
+    "import-linter>=2.15,<3",
+    "pyright>=1.1.413,<2",
+    "pytest>=9.1.1,<10",
+    "pytest-asyncio>=1.4.0,<2",
+    "respx>=0.23.1,<1",
+    "ruff>=0.16.6,<1",
+]
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv]
+package = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# Rule families from IMPLEMENTATION.md section 2.2: style, pyflakes, imports,
+# bugbear, pyupgrade, complexity, pylint, and bandit security checks.
+select = ["E", "F", "I", "B", "UP", "C90", "PL", "S"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 6
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert and use literal expected values.
+"tests/**" = ["S101", "PLR2004"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["nuroli"]
+
+[tool.pyright]
+include = ["src", "tests"]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.14"
+typeCheckingMode = "standard"
+# Strict on the layers that hold business rules (IMPLEMENTATION.md section 2.2).
+strict = ["src/nuroli/*/domain", "src/nuroli/*/application", "src/nuroli/shared_kernel"]
+reportMissingImports = "error"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--import-mode=importlib", "--strict-markers"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+  "integration: needs the PostgreSQL container from the dev stack",
+  "contract: adapter against recorded provider fixtures",
+  "security: part of the security matrix (IMPLEMENTATION.md section 5.3)",
+]
