@@ -454,9 +454,13 @@ outside the ticket boundary are covered by tests), **Verdict**.
 
 ### 4.7 Avoiding duplicate or conflicting work
 
-- The ticket table in section 8 is the single queue; the integrator marks
-  tickets `assigned`, `in review`, `merged` in the pull request tracker, not by
-  editing this file.
+- The ticket list in section 8 is the single queue. Each ticket carries a
+  **Status** line (`not started`, `in progress`, `in review`, `merged`,
+  `blocked: <reason>`). The implementer sets `in progress` when the branch is
+  created and `in review` when the pull request is opened; the integrator sets
+  `merged`. This Status line is the only part of `docs/rebuild/*` an agent may
+  edit, and the change is committed on the ticket's own branch (`docs: NU-0nn
+  status <value>`) so it merges with the ticket.
 - Before starting, an implementer runs `git fetch` and confirms no open pull
   request carries the same ticket id.
 - Two tickets never share a file in the same window unless one is merged.
@@ -632,7 +636,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 **Domain** (entities, value objects, aggregates, use cases) · **Contracts** ·
 **Security** · **Reliability** · **Steps** · **Failure cases** · **Tests** ·
 **Verify** · **Acceptance** · **Done** · **Reviewer evidence** · **Handoff** ·
-**Reason** · **Practices**.
+**Reason** · **Practices** · **Status** (section 4.7).
 
 ### Phase 1 — Repository and development contracts
 
@@ -647,7 +651,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Contracts:** Makefile target names from section 2.1; `.env.example` variable names from ARCHITECTURE.md section 16; `.gitignore` covers `.env`, `.env.*` except `.env.example`, `*.pem`, `*.key`, `*.crt`, `*.dump`, `backups/`, `*.log`, `node_modules/`, `.venv/`, `dist/`, `__pycache__/`, `.pytest_cache/`, `.ruff_cache/`, `playwright-report/`, `test-results/`, `.opencode/*.local.*`, `.agent-scratch/`, `.worktree.env`, `graphify-out/`.
 - **Security:** no secret placeholders that look real; `.env` ignored before any `.env` can exist.
 - **Reliability:** unimplemented targets exit 1 with "not implemented until NU-0nn".
-- **Steps:** 1. Create directories. 2. Write Makefile with all targets from section 2.1, each echoing its commands; stub bodies exit 1 with the owning ticket id. 3. Write `.env.example` with placeholders and comments. 4. Write AGENTS.md: purpose, command table, the rules (ownership boundary, stop-and-ask, no secrets, tests required, layer boundaries, Conventional Commits, owner-only git identity with no trailers (R-40), evidence headings, no over-engineering, read only relevant sections, never edit planning docs, one worktree per session, keep the code graph current and run `make preflight` before a pull request (R-41)), pointers to sections of this document and ARCHITECTURE.md. Also write a one-line `CLAUDE.md` containing `@AGENTS.md` so Claude Code sessions load the same rules. 5. Write README stub with install placeholder. 6. Write `.gitignore` and `.editorconfig`.
+- **Steps:** 1. Create directories. 2. Write Makefile with all targets from section 2.1, each echoing its commands; stub bodies exit 1 with the owning ticket id. 3. Write `.env.example` with placeholders and comments. 4. Write AGENTS.md: purpose, command table, the rules (ownership boundary, stop-and-ask, no secrets, tests required, layer boundaries, Conventional Commits, owner-only git identity with no trailers (R-40), evidence headings, no over-engineering, read only relevant sections, never edit planning docs except a ticket's Status line, one worktree per session, keep the code graph current and run `make preflight` before a pull request (R-41)), pointers to sections of this document and ARCHITECTURE.md. Also write a one-line `CLAUDE.md` containing `@AGENTS.md` so Claude Code sessions load the same rules. 5. Write README stub with install placeholder. 6. Write `.gitignore` and `.editorconfig`.
 - **Failure cases:** `make` without a target prints help; unknown target fails.
 - **Tests:** shell test `make help` exit 0; `make lint` exits 1 with the NU-002 message; `git check-ignore .env` succeeds.
 - **Verify:** `make help`, `git check-ignore -q .env && echo ignored`, `grep -c NUROLI_ .env.example` (equals the variable count in ARCHITECTURE.md section 16).
@@ -656,6 +660,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** list of stub targets each later ticket must implement.
 - **Reason:** everything else depends on a deterministic command contract; a stubbed Makefile makes missing pieces visible instead of silent.
 - **Practices:** AGENTS.md entry file.
+- **Status:** not started
 
 #### NU-002 Backend toolchain: uv, Ruff, Pyright, pytest
 - **Phase:** 1 · **Context:** platform
@@ -676,6 +681,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** exact dependency versions locked, for NU-006 and later.
 - **Reason:** tooling before code so every later ticket has the same gate.
 - **Practices:** import-boundary lint (configured in NU-006).
+- **Status:** not started
 
 #### NU-003 Frontend toolchain: Vite, React 19, TypeScript, ESLint, Prettier, Vitest
 - **Phase:** 1 · **Context:** platform
@@ -696,6 +702,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** locked versions; proxy configuration for NU-010.
 - **Reason:** same gate for frontend before any screen exists.
 - **Practices:** WCAG (lint rules only at this stage).
+- **Status:** not started
 
 #### NU-004 Pre-commit, gitleaks, and the pull-request workflow skeleton
 - **Phase:** 1 · **Context:** platform
@@ -716,6 +723,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** job names for later tickets to extend (`migrations`, `e2e`).
 - **Reason:** gates must exist before feature code, or evidence is only an agent's word.
 - **Practices:** Conventional Commits and ticket branches.
+- **Status:** not started
 
 #### NU-005 OpenCode agent definitions and pull-request evidence template
 - **Phase:** 1 · **Context:** platform
@@ -736,6 +744,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** none.
 - **Reason:** implementer and reviewer separation must be mechanical before feature tickets start.
 - **Practices:** AGENTS.md entry file.
+- **Status:** not started
 
 #### NU-049 Graphify: graph targets, post-commit refresh, agent guidance
 - **Phase:** 1 · **Context:** platform (agents area)
@@ -757,6 +766,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** graph output paths for NU-050.
 - **Reason:** R-41 requires the graph to be current at every commit before any agent relies on it; wiring it in Phase 1 means every later ticket is developed with the graph present.
 - **Practices:** Graphify code graph; AGENTS.md entry file.
+- **Status:** not started
 
 ### Phase 2 — Minimal project structure and domain boundaries
 
@@ -779,6 +789,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** package map for all later backend tickets; feature tickets add routes only inside their module's `api/router.py`.
 - **Reason:** boundaries enforced by a tool from the first line keep DDD-lite honest with weak models, and a fixed router registration removes `main.py` as a conflict point.
 - **Practices:** import-boundary lint; FastAPI structure rules.
+- **Status:** not started
 
 #### NU-007 Shared kernel: ids, Source value object, sanitizer, domain errors
 - **Phase:** 2 · **Context:** shared kernel
@@ -800,6 +811,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** exact `Source` shape for NU-023 and NU-029.
 - **Reason:** sources cross two modules and the API; one definition prevents drift.
 - **Practices:** test-first.
+- **Status:** not started
 
 #### NU-008 Frontend app shell: tokens, layout, router, providers, accessibility skeleton
 - **Phase:** 2 · **Context:** frontend platform
@@ -820,6 +832,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** component API of primitives for feature tickets.
 - **Reason:** shared shell and primitives prevent each feature ticket from inventing its own layout.
 - **Practices:** WCAG 2.2 AA with axe.
+- **Status:** not started
 
 #### NU-050 Graphify: impact, conflict, overlap reports, preflight, CI graph job
 - **Phase:** 2 · **Context:** platform (agents area)
@@ -841,6 +854,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** from this ticket on, every pull request carries a Preflight section and every lane pair requires `make graph-overlap` (section 4.9).
 - **Reason:** turns the four Graphify rules in section 3.5 into commands with exit codes, so the coordinator, implementer, and reviewer act on the same report instead of on impressions.
 - **Practices:** Graphify code graph; test-first (scripts have logic).
+- **Status:** not started
 
 ### Phase 3 — Configuration and secret boundaries
 
@@ -863,6 +877,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** `Settings` field names for every later ticket.
 - **Reason:** configuration is the secret boundary; it must be strict before credentials exist anywhere.
 - **Practices:** OWASP ASVS (configuration and logging items).
+- **Status:** not started
 
 #### NU-010 Compose stacks, Dockerfiles, nginx, fake-model placeholder, `make dev`
 - **Phase:** 3 · **Context:** platform / infra
@@ -883,6 +898,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** service names and internal URLs for NU-011 and NU-022.
 - **Reason:** the deployment shape must exist early so every later slice is tested in it.
 - **Practices:** reliability checks (section 5.7).
+- **Status:** not started
 
 ### Phase 4 — Database connection and migration foundation
 
@@ -905,6 +921,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** fixture names (`db_session`, `client`) for every later backend ticket.
 - **Reason:** authentication (next phase) needs tables, and migrations need to be safe before the first table exists.
 - **Practices:** PostgreSQL migration rules.
+- **Status:** not started
 
 ### Phase 5 — Login and registration
 
@@ -928,6 +945,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** aggregate method signatures for NU-014 and NU-015.
 - **Reason:** identity rules are the highest-risk logic; they are written and tested before any HTTP.
 - **Practices:** test-first; OWASP password storage sheet.
+- **Status:** not started
 
 #### NU-013 Users and sessions tables, repositories, mappers
 - **Phase:** 5 · **Context:** identity
@@ -949,6 +967,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** fake repository classes for use-case tests.
 - **Reason:** persistence for identity before use cases keeps NU-014 focused on behavior.
 - **Practices:** PostgreSQL migration rules.
+- **Status:** not started
 
 #### NU-014 Register, login, logout, me, options; Argon2 hasher; session cookie
 - **Phase:** 5 · **Context:** identity
@@ -970,6 +989,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** `issue_session` and `current_user` helper locations for NU-015 and NU-018.
 - **Reason:** authentication must exist before any owned resource so ownership tests are possible from the first feature.
 - **Practices:** OWASP ASVS authentication and session items.
+- **Status:** not started
 
 #### NU-015 Google sign-in with PKCE, state cookie, and one-method-per-email
 - **Phase:** 5 · **Context:** identity
@@ -991,6 +1011,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** none.
 - **Reason:** Google is a required login method and its validation rules are the most error-prone part of auth.
 - **Practices:** OWASP ASVS OAuth items; adapter contract tests.
+- **Status:** not started
 
 #### NU-016 Frontend authentication screens and session handling
 - **Phase:** 5 · **Context:** frontend auth
@@ -1012,6 +1033,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** `apiClient` usage pattern for all feature tickets.
 - **Reason:** login in the browser is the first vertical slice and proves the shell, client, and API together.
 - **Practices:** WCAG with axe; adapter contract tests (MSW).
+- **Status:** not started
 
 #### NU-017 Operator commands: reset-password, delete-user
 - **Phase:** 5 · **Context:** identity / platform
@@ -1033,6 +1055,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** `must_change_password` enforcement is completed in NU-019.
 - **Reason:** R-15 makes the operator the recovery path; it must exist before users can lock themselves out.
 - **Practices:** OWASP ASVS credential recovery items.
+- **Status:** not started
 
 ### Phase 6 — Session, authorization, and ownership enforcement
 
@@ -1056,6 +1079,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** kit helper signature for NU-025, NU-034, NU-037.
 - **Reason:** ownership isolation is the core security promise; centralizing it before resources exist makes every later ticket's ownership test a one-liner.
 - **Practices:** OWASP ASVS session and access-control items; test-first.
+- **Status:** not started
 
 #### NU-019 Change password, forced change after reset, Account screen
 - **Phase:** 6 · **Context:** identity / frontend auth
@@ -1077,6 +1101,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** none.
 - **Reason:** completes the recovery loop started in NU-017 and gives users control of their credential.
 - **Practices:** OWASP ASVS.
+- **Status:** not started
 
 ### Phase 7 — First simple model connection
 
@@ -1100,6 +1125,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** exact event types for NU-021 and NU-026.
 - **Reason:** the port is the boundary that keeps provider details out of the domain; defining it first makes the adapter a pure implementation ticket.
 - **Practices:** adapter contract tests (prepared).
+- **Status:** not started
 
 #### NU-021 OpenAI-compatible streaming adapter, error mapping, check-model, capabilities endpoint
 - **Phase:** 7 · **Context:** adapters / platform
@@ -1121,6 +1147,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** factory function name for NU-026 and NU-034.
 - **Reason:** the single model connection is the product's engine; it must be proven against recorded provider behavior before conversations use it.
 - **Practices:** adapter contract tests; OWASP ASVS (secret handling).
+- **Status:** not started
 
 #### NU-022 Fake model container for development and end-to-end tests
 - **Phase:** 7 · **Context:** infra
@@ -1142,6 +1169,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** trigger phrases for NU-026, NU-028, NU-031, NU-035 tests.
 - **Reason:** I-07: every automated test must run without paid calls, so the model side of the stack must be fake and faithful.
 - **Practices:** reliability checks.
+- **Status:** not started
 
 ### Phase 8 — Conversations and streaming
 
@@ -1165,6 +1193,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** method signatures for NU-026.
 - **Reason:** the conversation rules and the prompt boundary are the heart of the product and must not be entangled with streaming plumbing.
 - **Practices:** test-first; OWASP LLM prompt-injection sheet.
+- **Status:** not started
 
 #### NU-024 Conversations and messages tables, repository, mappers
 - **Phase:** 8 · **Context:** conversations
@@ -1186,6 +1215,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** cursor helper for NU-033 list endpoints.
 - **Reason:** persistence separated from behavior keeps the streaming ticket small.
 - **Practices:** PostgreSQL rules.
+- **Status:** not started
 
 #### NU-025 Conversation CRUD use cases and endpoints
 - **Phase:** 8 · **Context:** conversations
@@ -1207,6 +1237,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** response schema module for NU-026 and NU-028.
 - **Reason:** non-streaming endpoints first give the frontend something to build against while streaming is finished.
 - **Practices:** OWASP ASVS access control.
+- **Status:** not started
 
 #### NU-026 SendMessage streaming use case, SSE encoder, endpoint, limits, stop and failure handling
 - **Phase:** 8 · **Context:** conversations
@@ -1228,6 +1259,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** the reply pipeline structure that NU-027 reuses and NU-030 extends.
 - **Reason:** streaming is the highest-complexity piece; isolating it from research and UI keeps failure handling reviewable.
 - **Practices:** test-first; reliability checks.
+- **Status:** not started
 
 #### NU-027 RetryReply
 - **Phase:** 8 · **Context:** conversations
@@ -1249,6 +1281,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** none.
 - **Reason:** small, separate ticket so the retry rule is reviewed on its own.
 - **Practices:** test-first.
+- **Status:** not started
 
 #### NU-028 Frontend conversations: list, thread, composer, SSE client, streaming, stop, retry, Markdown
 - **Phase:** 8 · **Context:** frontend conversations
@@ -1270,6 +1303,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** `Message` and `Markdown` components for NU-031, NU-035, NU-038.
 - **Reason:** completes the conversation vertical slice end to end before research or knowledge features begin.
 - **Practices:** WCAG with axe; adapter contract tests (MSW); OWASP safe rendering.
+- **Status:** not started
 
 ### Phase 9 — Web research and sources
 
@@ -1293,6 +1327,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** port method signatures for NU-030.
 - **Reason:** R-07 and R-08 make search a narrow, replaceable adapter; proving it against recorded responses keeps tests free.
 - **Practices:** adapter contract tests.
+- **Status:** not started
 
 #### NU-030 Research inside SendMessage: query rewrite, search, sources, research events, search limit
 - **Phase:** 9 · **Context:** conversations
@@ -1314,6 +1349,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** message `sources` shape for NU-031 and draft generation in NU-034.
 - **Reason:** research is a bounded extension of the reply pipeline; adding it after streaming is stable keeps the risk local.
 - **Practices:** OWASP LLM prompt-injection sheet; test-first.
+- **Status:** not started
 
 #### NU-031 Frontend research toggle, progress, sources block, source drawer
 - **Phase:** 9 · **Context:** frontend conversations
@@ -1335,6 +1371,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** `Sources` component reused by summaries.
 - **Reason:** completes the research slice visibly.
 - **Practices:** WCAG with axe.
+- **Status:** not started
 
 ### Phase 10 — Summary review and confirmation
 
@@ -1358,6 +1395,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** method signatures for NU-034.
 - **Reason:** the confirmation rule is a product promise; it lives in one aggregate with exhaustive tests.
 - **Practices:** test-first.
+- **Status:** not started
 
 #### NU-033 Summaries tables, repository with search vector, transcript port, deletion semantics
 - **Phase:** 10 · **Context:** knowledge / conversations
@@ -1379,6 +1417,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** `search_confirmed` result shape for NU-037.
 - **Reason:** the index is written at confirm time by the same repository, which is what makes summary-only retrieval a structural guarantee.
 - **Practices:** PostgreSQL rules.
+- **Status:** not started
 
 #### NU-034 Summary use cases and endpoints: generate, get, update draft, confirm, discard, archive, list, versions
 - **Phase:** 10 · **Context:** knowledge
@@ -1400,6 +1439,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** schema module for NU-035 and NU-036.
 - **Reason:** completes the backend of the confirmation loop in one reviewable unit.
 - **Practices:** test-first; OWASP ASVS access control.
+- **Status:** not started
 
 #### NU-035 Frontend summary review: generate, edit with autosave, confirm, discard, regenerate, versions
 - **Phase:** 10 · **Context:** frontend summaries
@@ -1421,6 +1461,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** editor component for later edits.
 - **Reason:** confirmation-before-save is a product promise that must be visibly correct in the UI, including double submit.
 - **Practices:** WCAG with axe.
+- **Status:** not started
 
 #### NU-036 Frontend library: list, search, archive, detail, versions, reopen conversation
 - **Phase:** 10 · **Context:** frontend summaries
@@ -1442,6 +1483,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** none.
 - **Reason:** closes the capture slice with the library and the path back to the source.
 - **Practices:** WCAG with axe.
+- **Status:** not started
 
 ### Phase 11 — Knowledge retrieval
 
@@ -1465,6 +1507,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** citation shape for NU-038.
 - **Reason:** summary-only retrieval is the product's defining rule; this ticket proves it end to end on the server.
 - **Practices:** test-first; OWASP LLM prompt-injection sheet.
+- **Status:** not started
 
 #### NU-038 Frontend Ask my knowledge
 - **Phase:** 11 · **Context:** frontend knowledge
@@ -1486,6 +1529,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** none.
 - **Reason:** the last feature slice; its e2e is the product's acceptance journey.
 - **Practices:** WCAG with axe.
+- **Status:** not started
 
 ### Phase 12 — Docker Compose release
 
@@ -1509,6 +1553,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** image names for NU-040.
 - **Reason:** the product is a Compose install; the README is part of the product.
 - **Practices:** reliability checks.
+- **Status:** not started
 
 #### NU-040 Release workflow: tag, build, scan, publish
 - **Phase:** 12 · **Context:** infra
@@ -1530,6 +1575,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** none.
 - **Reason:** releases must be reproducible artifacts, not local builds.
 - **Practices:** Conventional Commits (tags derive from them); dependency and vulnerability checks.
+- **Status:** not started
 
 ### Phase 13 — Reliability, backup, and recovery
 
@@ -1553,6 +1599,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** none.
 - **Reason:** a self-hosted product without a proven restore is not production-ready.
 - **Practices:** reliability checks.
+- **Status:** not started
 
 #### NU-042 Logging completeness, redaction tests, readiness semantics
 - **Phase:** 13 · **Context:** platform
@@ -1574,6 +1621,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** none.
 - **Reason:** logs are the only observability in v1; they must be safe to share.
 - **Practices:** OWASP ASVS logging items.
+- **Status:** not started
 
 ### Phase 14 — Setup quality gates and release hardening
 
@@ -1597,6 +1645,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** none.
 - **Reason:** consolidating security checks into one required job makes regressions visible regardless of which ticket introduces them.
 - **Practices:** OWASP ASVS; LLM prompt-injection sheet.
+- **Status:** not started
 
 #### NU-044 Accessibility and keyboard gates
 - **Phase:** 14 · **Context:** frontend
@@ -1618,6 +1667,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** none.
 - **Reason:** accessibility regressions are cheap to prevent with one always-on spec.
 - **Practices:** WCAG with axe.
+- **Status:** not started
 
 #### NU-045 Upgrade test, release checklist, rollback documentation, final README
 - **Phase:** 14 · **Context:** infra / docs
@@ -1639,6 +1689,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** v1.0.0 tag readiness statement.
 - **Reason:** the last hardening step before v1 is proving that the next release will not break an install.
 - **Practices:** release and rollback checks.
+- **Status:** not started
 
 ### Phase 15 — Future extensions (not ready; decisions required)
 
