@@ -811,7 +811,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** exact `Source` shape for NU-023 and NU-029.
 - **Reason:** sources cross two modules and the API; one definition prevents drift.
 - **Practices:** test-first.
-- **Status:** in progress
+- **Status:** in review
 
 #### NU-008 Frontend app shell: tokens, layout, router, providers, accessibility skeleton
 - **Phase:** 2 · **Context:** frontend platform
