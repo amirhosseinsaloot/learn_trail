@@ -144,7 +144,7 @@ def commit_file(repo: Path, name: str, content: str, message: str) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
     git(repo, "add", name)
-    git(repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", message)
+    git(repo, "commit", "-q", "-m", message)
     return git(repo, "rev-parse", "HEAD")
 
 
@@ -153,6 +153,9 @@ def repo(tmp_path: Path) -> Path:
     root = tmp_path / "repo"
     root.mkdir()
     git(root, "init", "-q", "-b", "rebuild/v1", ".")
+    # Commits and rebases need an identity; CI runners have no global git config.
+    git(root, "config", "user.name", "test")
+    git(root, "config", "user.email", "test@example.com")
     (root / ".gitignore").write_text("graphify-out/\n.worktree.env\n", encoding="utf-8")
     git(root, "add", ".gitignore")
     commit_file(root, "backend/src/nuroli/identity/domain/user.py", "def user(): ...\n", "base")

@@ -80,7 +80,8 @@ def _database_url_for(base_url: str, database: str) -> str:
 
 def test_two_migrate_processes_do_not_race(test_database_url: str, test_settings: Settings) -> None:
     """Two API containers starting together: both succeed, migrations apply once."""
-    admin_url = _database_url_for(test_database_url, "nuroli")
+    # The maintenance database exists on every server; "nuroli" does not exist in CI.
+    admin_url = _database_url_for(test_database_url, "postgres")
     race_url = _database_url_for(test_database_url, f"nuroli_race_{os.getpid()}")
     race_db = race_url.rsplit("/", 1)[1]
 
