@@ -660,7 +660,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** list of stub targets each later ticket must implement.
 - **Reason:** everything else depends on a deterministic command contract; a stubbed Makefile makes missing pieces visible instead of silent.
 - **Practices:** AGENTS.md entry file.
-- **Status:** in review
+- **Status:** merged
 
 #### NU-002 Backend toolchain: uv, Ruff, Pyright, pytest
 - **Phase:** 1 · **Context:** platform
@@ -681,7 +681,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** exact dependency versions locked, for NU-006 and later.
 - **Reason:** tooling before code so every later ticket has the same gate.
 - **Practices:** import-boundary lint (configured in NU-006).
-- **Status:** in review
+- **Status:** merged
 
 #### NU-003 Frontend toolchain: Vite, React 19, TypeScript, ESLint, Prettier, Vitest
 - **Phase:** 1 · **Context:** platform
@@ -702,7 +702,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** locked versions; proxy configuration for NU-010.
 - **Reason:** same gate for frontend before any screen exists.
 - **Practices:** WCAG (lint rules only at this stage).
-- **Status:** in review
+- **Status:** merged
 
 #### NU-004 Pre-commit, gitleaks, and the pull-request workflow skeleton
 - **Phase:** 1 · **Context:** platform
@@ -723,7 +723,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** job names for later tickets to extend (`migrations`, `e2e`).
 - **Reason:** gates must exist before feature code, or evidence is only an agent's word.
 - **Practices:** Conventional Commits and ticket branches.
-- **Status:** in review
+- **Status:** merged
 
 #### NU-005 OpenCode agent definitions and pull-request evidence template
 - **Phase:** 1 · **Context:** platform
@@ -744,7 +744,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** none.
 - **Reason:** implementer and reviewer separation must be mechanical before feature tickets start.
 - **Practices:** AGENTS.md entry file.
-- **Status:** in review
+- **Status:** merged
 
 #### NU-049 Graphify: graph targets, post-commit refresh, agent guidance
 - **Phase:** 1 · **Context:** platform (agents area)
@@ -766,7 +766,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** graph output paths for NU-050.
 - **Reason:** R-41 requires the graph to be current at every commit before any agent relies on it; wiring it in Phase 1 means every later ticket is developed with the graph present.
 - **Practices:** Graphify code graph; AGENTS.md entry file.
-- **Status:** in review
+- **Status:** merged
 
 ### Phase 2 — Minimal project structure and domain boundaries
 
@@ -789,7 +789,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** package map for all later backend tickets; feature tickets add routes only inside their module's `api/router.py`.
 - **Reason:** boundaries enforced by a tool from the first line keep DDD-lite honest with weak models, and a fixed router registration removes `main.py` as a conflict point.
 - **Practices:** import-boundary lint; FastAPI structure rules.
-- **Status:** in review
+- **Status:** merged
 
 #### NU-007 Shared kernel: ids, Source value object, sanitizer, domain errors
 - **Phase:** 2 · **Context:** shared kernel
@@ -811,7 +811,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** exact `Source` shape for NU-023 and NU-029.
 - **Reason:** sources cross two modules and the API; one definition prevents drift.
 - **Practices:** test-first.
-- **Status:** in review
+- **Status:** merged
 
 #### NU-008 Frontend app shell: tokens, layout, router, providers, accessibility skeleton
 - **Phase:** 2 · **Context:** frontend platform
@@ -832,7 +832,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** component API of primitives for feature tickets.
 - **Reason:** shared shell and primitives prevent each feature ticket from inventing its own layout.
 - **Practices:** WCAG 2.2 AA with axe.
-- **Status:** in review
+- **Status:** merged
 
 #### NU-050 Graphify: impact, conflict, overlap reports, preflight, CI graph job
 - **Phase:** 2 · **Context:** platform (agents area)
@@ -854,7 +854,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** from this ticket on, every pull request carries a Preflight section and every lane pair requires `make graph-overlap` (section 4.9).
 - **Reason:** turns the four Graphify rules in section 3.5 into commands with exit codes, so the coordinator, implementer, and reviewer act on the same report instead of on impressions.
 - **Practices:** Graphify code graph; test-first (scripts have logic).
-- **Status:** in review
+- **Status:** merged
 
 ### Phase 3 — Configuration and secret boundaries
 
@@ -877,7 +877,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** `Settings` field names for every later ticket.
 - **Reason:** configuration is the secret boundary; it must be strict before credentials exist anywhere.
 - **Practices:** OWASP ASVS (configuration and logging items).
-- **Status:** in review
+- **Status:** merged
 
 #### NU-010 Compose stacks, Dockerfiles, nginx, fake-model placeholder, `make dev`
 - **Phase:** 3 · **Context:** platform / infra
@@ -898,7 +898,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** service names and internal URLs for NU-011 and NU-022.
 - **Reason:** the deployment shape must exist early so every later slice is tested in it.
 - **Practices:** reliability checks (section 5.7).
-- **Status:** in review
+- **Status:** merged
 
 ### Phase 4 — Database connection and migration foundation
 
@@ -921,7 +921,7 @@ Ticket field key: **Phase** · **Context** (bounded context or platform) ·
 - **Handoff:** fixture names (`db_session`, `client`) for every later backend ticket.
 - **Reason:** authentication (next phase) needs tables, and migrations need to be safe before the first table exists.
 - **Practices:** PostgreSQL migration rules.
-- **Status:** in review
+- **Status:** merged
 
 ### Phase 5 — Login and registration
 
