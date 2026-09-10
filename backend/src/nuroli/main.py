@@ -17,6 +17,7 @@ from nuroli.identity.api.router import router as identity_router
 from nuroli.knowledge.api.router import router as knowledge_router
 from nuroli.platform.errors import install_error_handlers
 from nuroli.platform.health import router as health_router
+from nuroli.platform.lifespan import lifespan
 from nuroli.platform.logging import configure_logging
 from nuroli.platform.middleware import RequestIdMiddleware
 from nuroli.platform.settings import Settings, SettingsError, load_settings
@@ -29,7 +30,7 @@ log = logging.getLogger("nuroli")
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings if settings is not None else load_settings()
     configure_logging(settings)
-    app = FastAPI(title="Nuroli")
+    app = FastAPI(title="Nuroli", lifespan=lifespan)
     app.state.settings = settings
     app.add_middleware(RequestIdMiddleware)
     install_error_handlers(app)

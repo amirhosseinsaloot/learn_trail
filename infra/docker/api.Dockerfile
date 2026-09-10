@@ -24,7 +24,11 @@ RUN groupadd --gid 1000 nuroli && useradd --uid 1000 --gid nuroli --create-home 
 WORKDIR /app
 COPY --from=builder --chown=nuroli:nuroli /app/.venv ./.venv
 COPY --from=builder --chown=nuroli:nuroli /app/src ./src
+COPY --chown=nuroli:nuroli backend/alembic.ini ./alembic.ini
+COPY --chown=nuroli:nuroli backend/migrations ./migrations
+COPY --chown=nuroli:nuroli infra/docker/api-entrypoint.sh ./api-entrypoint.sh
 USER nuroli
 EXPOSE 8000
-# Migrations move into infra/docker/api-entrypoint.sh in NU-011.
+# The entrypoint applies migrations under an advisory lock, then execs the command.
+ENTRYPOINT ["/app/api-entrypoint.sh"]
 CMD ["python", "-m", "nuroli.main"]

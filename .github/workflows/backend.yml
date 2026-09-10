@@ -1,5 +1,5 @@
-# Backend pull-request gate (IMPLEMENTATION.md section 5.2). Later tickets add
-# the `migrations` and `security` jobs and the PostgreSQL service.
+# Backend pull-request gate (IMPLEMENTATION.md section 5.2). NU-043 adds the
+# `security` job.
 name: backend
 
 on:
@@ -36,6 +36,28 @@ jobs:
   backend-tests:
     name: backend-tests
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
+        env:
+          POSTGRES_USER: nuroli
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: nuroli_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nuroli -d nuroli_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      # Throwaway values; CI never holds real credentials (IMPLEMENTATION.md section 4.8).
+      NUROLI_PUBLIC_ORIGIN: http://localhost:8080
+      NUROLI_SECRET_KEY: ci-only-secret-key-0123456789abcdef0123456789
+      NUROLI_MODEL_BASE_URL: http://localhost:9000/v1
+      NUROLI_MODEL_NAME: fake-model
+      NUROLI_DATABASE_URL: postgresql+asyncpg://nuroli:ci-only-password@localhost:5432/nuroli_test
+      NUROLI_TEST_DATABASE_URL: postgresql+asyncpg://nuroli:ci-only-password@localhost:5432/nuroli_test
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
@@ -45,5 +67,41 @@ jobs:
       - name: Install backend dependencies
         run: uv sync --locked --all-groups
         working-directory: backend
-      - name: Unit tests
-        run: make test-unit
+      - name: Unit and integration tests
+        run: make test-unit test-integration
+
+  migrations:
+    name: migrations
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
+        env:
+          POSTGRES_USER: nuroli
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: nuroli
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nuroli -d nuroli"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      NUROLI_PUBLIC_ORIGIN: http://localhost:8080
+      NUROLI_SECRET_KEY: ci-only-secret-key-0123456789abcdef0123456789
+      NUROLI_MODEL_BASE_URL: http://localhost:9000/v1
+      NUROLI_MODEL_NAME: fake-model
+      NUROLI_DATABASE_URL: postgresql+asyncpg://nuroli:ci-only-password@localhost:5432/nuroli
+      NUROLI_TEST_DATABASE_URL: postgresql+asyncpg://nuroli:ci-only-password@localhost:5432/nuroli
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Install backend dependencies
+        run: uv sync --locked --all-groups
+        working-directory: backend
+      - name: No drift, reversible migrations
+        run: make migrate-check
